@@ -1,0 +1,27 @@
+# Milestone 5 (UI only): the scanner opens in the matching state and the flash toggles.
+# Barcode matching needs a printed code; see README "Testing the scanner".
+appId: app.grailbox
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Collections"
+    timeout: 10000
+- tapOn:
+    id: "dashboard-scan"
+- runFlow:
+    when:
+      visible: "Allow"
+    commands:
+      - tapOn: "Allow"
+- runFlow:
+    when:
+      visible: "While using the app"
+    commands:
+      - tapOn: "While using the app"
+- assertVisible: "Matching against your Grailbox…"
+- tapOn:
+    id: "scanner-flash"
+- takeScreenshot: 06-scanner
+- tapOn:
+    id: "scanner-search-instead"
+- assertVisible: "Collections"

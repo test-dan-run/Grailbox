@@ -1,0 +1,35 @@
+# Milestone 3: a wishlist item from the Dashboard in a few taps; Save stays disabled until name + collection.
+appId: app.grailbox
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Collections"
+    timeout: 10000
+- tapOn:
+    id: "dashboard-settings"
+- tapOn:
+    id: "settings-seed"
+- tapOn:
+    id: "dashboard-spot"
+- assertVisible: "Spot a Wishlist Item"
+- assertVisible:
+    id: "wishlist-add"
+    enabled: false
+- tapOn:
+    id: "wishlist-title"
+- inputText: "Rowlet Gigantamax Plush"
+- tapOn:
+    id: "wishlist-price"
+- inputText: "1234.5"
+- assertVisible: "1,234.5"
+- tapOn: "Grail"
+- hideKeyboard
+- takeScreenshot: 01-wishlist
+- tapOn:
+    id: "wishlist-add"
+- assertVisible: "Collections"
+- tapOn:
+    id: "dashboard-search"
+- inputText: "gigantamax"
+- assertVisible: "Rowlet Gigantamax Plush"

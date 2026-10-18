@@ -1,0 +1,84 @@
+{
+  "expo": {
+    "name": "Grailbox",
+    "slug": "grailbox",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.grailbox",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Grailbox uses the camera to scan barcodes and photograph your collectibles. Photos stay on this phone.",
+        "NSPhotoLibraryUsageDescription": "Grailbox imports photos of your collectibles from your library. Photos stay on this phone."
+      }
+    },
+    "android": {
+      "package": "app.grailbox",
+      "adaptiveIcon": {
+        "backgroundColor": "#CCFBF1",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": true
+        }
+      ],
+      "expo-image",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 152,
+          "resizeMode": "contain",
+          "backgroundColor": "#CCFBF1",
+          "dark": {
+            "image": "./assets/splash-icon-dark.png",
+            "backgroundColor": "#0F172A"
+          }
+        }
+      ],
+      "expo-sharing",
+      "expo-localization",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Grailbox uses the camera to scan barcodes and check whether you already own an item. Nothing is uploaded.",
+          "recordAudioAndroid": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Grailbox imports photos of your collectibles from your library. Photos stay on this phone.",
+          "cameraPermission": "Grailbox uses the camera to photograph your collectibles. Photos stay on this phone.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "react-native-fast-tflite",
+        {
+          "enableAndroidGpuLibraries": true,
+          "enableCoreMLDelegate": true
+        }
+      ]
+    ],
+    "scheme": "grailbox",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

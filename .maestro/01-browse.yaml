@@ -1,0 +1,44 @@
+# Milestones 1–2: empty Dashboard, seed, browse every screen.
+appId: app.grailbox
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Collections"
+    timeout: 10000
+- assertVisible: "No collections yet"
+- takeScreenshot: 02-dashboard-empty
+- tapOn:
+    id: "dashboard-settings"
+- tapOn:
+    id: "settings-seed"
+- extendedWaitUntil:
+    visible: "Rowlet Plushies & Merch"
+    timeout: 5000
+- assertVisible: "5 Owned"
+- assertVisible: "2 Wishlist"
+- assertVisible: "1 In transit"
+- takeScreenshot: 02-dashboard
+- tapOn: "Rowlet Plushies & Merch"
+- assertVisible: "8 items · 5 owned · 2 wishlist · 1 in transit"
+- tapOn: "Figures (2)"
+- assertVisible: "Rowlet Moncolle Figure"
+- assertNotVisible: "Rowlet Jumbo Plush"
+- tapOn: "All (8)"
+- takeScreenshot: 03-gallery
+- tapOn: "Rowlet Jumbo Plush.*"
+- assertVisible: "Specifications"
+- assertVisible: "Owned (1)"
+- assertVisible: "\\$35.00"
+- takeScreenshot: 04-item-details
+- back
+- tapOn: "Journal"
+- assertVisible: "Collecting since Dec 2019"
+- takeScreenshot: 05-journal
+- tapOn: "Open entry: Grail Found.*"
+- assertVisible: "Collector note"
+- assertVisible: "Tagged in this entry"
+- takeScreenshot: 05a-entry
+- tapOn: "Earlier entry: Shelf reorganization.*"
+- assertVisible: "Shelf reorganization"
+- assertNotVisible: "Earlier entry.*"
