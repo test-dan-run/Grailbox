@@ -127,7 +127,12 @@ export function SettingsScreen() {
   const loadSample = async () => {
     const existing = await listCollections();
     const go = async () => {
-      await (DEMO ? seedDemo() : seedDatabase());
+      try {
+        await (DEMO ? seedDemo() : seedDatabase());
+      } catch (e) {
+        Alert.alert('Could not load sample data', String((e as Error).message ?? e));
+        return;
+      }
       goBack(router);
     };
     if (existing.length) {

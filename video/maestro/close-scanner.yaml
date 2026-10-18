@@ -1,0 +1,7 @@
+appId: app.grailbox
+---
+- tapOn:
+    id: "scanner-close"
+- extendedWaitUntil:
+    visible: "Collections"
+    timeout: 5000

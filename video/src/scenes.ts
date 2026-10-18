@@ -1,6 +1,7 @@
 /*
- * The store video, scene by scene. Each scene plays one clip that
- * maestro/promo.yaml recorded (its startRecording name) under a caption.
+ * The store video, scene by scene. Each scene plays one clip under a
+ * caption. scripts/capture.sh records each clip while the Maestro flow of the
+ * same name (maestro/<clip>.yaml) runs.
  *
  * Google Play autoplays the first 30 seconds muted, so the captions carry the
  * story. Its listing rules also forbid calls to action ("Download now") and

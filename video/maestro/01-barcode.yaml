@@ -1,0 +1,8 @@
+# From the Dashboard. The scanner reads the tag's barcode on its own.
+appId: app.grailbox
+---
+- tapOn:
+    id: "dashboard-scan"
+- extendedWaitUntil:
+    visible: "ALREADY OWNED"
+    timeout: 10000

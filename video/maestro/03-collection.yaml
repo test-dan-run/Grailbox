@@ -1,0 +1,9 @@
+# From the Dashboard.
+appId: app.grailbox
+---
+- tapOn: "Rowlet Plushies & Merch"
+- extendedWaitUntil:
+    visible: "All (8)"
+    timeout: 5000
+- tapOn: "Figures (2)"
+- tapOn: "All (8)"

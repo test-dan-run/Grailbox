@@ -1,0 +1,23 @@
+# Off camera: fresh sample data. Every flow here runs from scripts/capture.sh,
+# which records the numbered ones. Needs the demo build (EXPO_PUBLIC_DEMO=1).
+appId: app.grailbox
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Collections"
+    timeout: 15000
+- tapOn:
+    id: "dashboard-settings"
+- tapOn:
+    id: "settings-seed"
+- extendedWaitUntil:
+    visible: "Rowlet Plushies & Merch"
+    timeout: 15000
+# Maestro has no sleep command. A wait for text that never appears, marked
+# optional, pauses for its timeout instead. Here: the sample photos get their
+# scanner embeddings in the background, which takes a few seconds on an emulator.
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 10000
+    optional: true

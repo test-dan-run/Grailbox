@@ -1,0 +1,7 @@
+# Back to the Dashboard. A relaunch keeps the data.
+appId: app.grailbox
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Collections"
+    timeout: 15000

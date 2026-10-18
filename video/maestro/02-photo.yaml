@@ -1,0 +1,10 @@
+# From the scanner's result. Scan Again moves to the photo scene.
+appId: app.grailbox
+---
+- tapOn:
+    id: "scanner-secondary"
+- tapOn:
+    id: "scanner-check-photo"
+- extendedWaitUntil:
+    visible: "ON WISHLIST.*"
+    timeout: 30000

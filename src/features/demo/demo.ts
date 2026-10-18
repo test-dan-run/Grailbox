@@ -1,4 +1,5 @@
-import { Asset } from 'expo-asset';
+import { Image } from 'expo-image';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 import { updateItem } from '@/db/repositories/items';
 import { SEED_BARCODES, seedDatabase } from '@/db/seed';
@@ -36,9 +37,17 @@ const ITEM_PHOTOS: Record<string, number[]> = {
   'Rowlet Juggling Plush': [juggling],
 };
 
+/**
+ * Saves a bundled image to a file. Android release builds keep bundled images
+ * as drawable resources, which have no file URI, so expo-image loads them.
+ */
 async function localFile(module: number) {
-  const asset = await Asset.fromModule(module).downloadAsync();
-  return { uri: asset.localUri!, width: asset.width ?? 0, height: asset.height ?? 0 };
+  const loaded = await Image.loadAsync(module);
+  const rendered = await ImageManipulator.manipulate(loaded).renderAsync();
+  const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 1 });
+  loaded.release();
+  rendered.release();
+  return saved;
 }
 
 /** A file URI for a scene's image, for the photo matcher. */
