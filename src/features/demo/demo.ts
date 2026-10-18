@@ -1,41 +1,32 @@
 import { Image } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import { updateItem } from '@/db/repositories/items';
-import { SEED_BARCODES, seedDatabase } from '@/db/seed';
+import { getItem, updateItem } from '@/db/repositories/items';
+import { seedDatabase } from '@/db/seed';
 import { importPhoto } from '@/lib/photos';
 
-import juggling from '../../../assets/demo/juggling-plush.jpg';
-import jumbo from '../../../assets/demo/jumbo-plush.jpg';
-import scanBarcode from '../../../assets/demo/scan-barcode.jpg';
-import scanPhoto from '../../../assets/demo/scan-photo.jpg';
+import { ITEM_PHOTOS, SCENE_IMAGES } from './assets';
 
 /*
- * The store video build (EXPO_PUBLIC_DEMO=1, `eas build --profile demo`).
+ * The showcase video build (EXPO_PUBLIC_DEMO=1, `eas build --profile demo`).
  * Recorded on an emulator, which has no real camera to point at an item, so:
  * - the scanner shows still "camera" scenes instead of the camera, and runs
- *   the real barcode lookup and photo matching on them;
- * - "Load sample data" also gives some sample items photos, so photo matching
- *   has references and the gallery is not all placeholders.
- * The images live in assets/demo/. See video/README.md.
+ *   the real photo matcher on them;
+ * - "Load sample data" also gives the sample items product photos, so photo
+ *   matching has references, and leaves out the barcodes, which the video
+ *   doesn't show.
+ * The images are real product photos, so the demo build is for internal
+ * showcases only. See assets.ts and video/README.md.
  */
 
 export const DEMO = process.env.EXPO_PUBLIC_DEMO === '1';
 
 export interface DemoScene {
   image: number;
-  /** Read as if the camera saw it, shortly after the scene shows. Scenes without one wait for "Check this item". */
-  barcode?: string;
 }
 
 /** In order: "Scan Again" moves to the next scene. */
-export const DEMO_SCENES: DemoScene[] = [{ image: scanBarcode, barcode: SEED_BARCODES.jumboPlush }, { image: scanPhoto }];
-
-/** Sample item photos, by item title. */
-const ITEM_PHOTOS: Record<string, number[]> = {
-  'Rowlet Jumbo Plush': [jumbo],
-  'Rowlet Juggling Plush': [juggling],
-};
+export const DEMO_SCENES: DemoScene[] = SCENE_IMAGES.map((image) => ({ image }));
 
 /**
  * Saves a bundled image to a file. Android release builds keep bundled images
@@ -55,7 +46,7 @@ export async function sceneUri(scene: DemoScene): Promise<string> {
   return (await localFile(scene.image)).uri;
 }
 
-/** The normal sample data, plus photos for the items in ITEM_PHOTOS. */
+/** The normal sample data, with photos for the items in ITEM_PHOTOS and without barcodes. */
 export async function seedDemo() {
   const ids = await seedDatabase();
   for (const [title, modules] of Object.entries(ITEM_PHOTOS)) {
@@ -63,6 +54,7 @@ export async function seedDemo() {
     if (!id) continue;
     const photos: string[] = [];
     for (const module of modules) photos.push(await importPhoto(await localFile(module)));
-    await updateItem(id, { photos });
+    const { barcode: _, ...specs } = (await getItem(id))?.specs ?? {};
+    await updateItem(id, { photos, specs });
   }
 }

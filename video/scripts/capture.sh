@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-STEPS=(setup @01-barcode @02-photo close-scanner @03-collection @04-item back @05-journal relaunch @06-wishlist)
+STEPS=(setup @01-scan-owned @02-scan-wishlist close-scanner @03-collection @04-item back @05-journal relaunch @06-wishlist)
 DEVICE_FILE=/sdcard/grailbox-clip.mp4
 
 for tool in adb maestro ffmpeg; do

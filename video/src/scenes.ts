@@ -22,8 +22,9 @@ export interface SceneConfig {
 }
 
 export const SCENES: SceneConfig[] = [
-  { clip: '01-barcode', caption: 'Already own it?\nScan to check' },
-  { clip: '02-photo', caption: 'No barcode?\nSnap a photo' },
+  // The scan results get a longer hold, so there is time to read them.
+  { clip: '01-scan-owned', caption: 'Already own it?\nSnap a photo to check', holdEnd: 1.6 },
+  { clip: '02-scan-wishlist', caption: 'Spot a grail\nfrom your wishlist', holdEnd: 1.6 },
   { clip: '03-collection', caption: 'Your whole collection,\nsorted' },
   { clip: '04-item', caption: 'Every detail\nof every piece' },
   { clip: '06-wishlist', caption: "Track the grails\nyou're hunting" },

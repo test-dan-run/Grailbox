@@ -46,7 +46,7 @@ CI runs lint, the type check, the tests, and an iOS and Android bundle on every 
 
 ## Store video
 
-The `video/` folder makes the Google Play preview video from screen recordings of a demo build of the app. See [video/README.md](video/README.md).
+The `video/` folder makes a showcase video from screen recordings of a demo build of the app. The demo build uses real Rowlet product photos, so the video is for internal showcases only. See [video/README.md](video/README.md).
 
 ## Web preview
 

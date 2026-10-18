@@ -110,26 +110,17 @@ export function ScannerScreen() {
     );
   }, []);
 
-  const matchCode = useCallback(
-    async (data: string) => {
+  const onScanned = useCallback(
+    async (result: BarcodeScanningResult) => {
       if (busy.current) return;
       busy.current = true;
-      const code = data.trim();
+      const code = result.data.trim();
       const match = await findByBarcode(code);
       if (match) showMatch(match, { by: 'barcode', code });
       else showNoMatch({ code, suggestions: [] });
     },
     [showMatch, showNoMatch],
   );
-  const onScanned = useCallback((result: BarcodeScanningResult) => matchCode(result.data), [matchCode]);
-
-  // Demo build: a scene's barcode is read a moment after the scene shows, as the camera would.
-  const demoCode = DEMO && state.kind === 'matching' && cameraReady ? scene.barcode : undefined;
-  useEffect(() => {
-    if (!demoCode) return;
-    const timer = setTimeout(() => matchCode(demoCode), 1500);
-    return () => clearTimeout(timer);
-  }, [demoCode, matchCode]);
 
   const checkPhoto = useCallback(async () => {
     const cam = camera.current;

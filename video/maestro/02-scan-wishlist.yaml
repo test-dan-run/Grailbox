@@ -1,0 +1,15 @@
+# From the scanner's result. Scan Again moves to a plush on the wishlist.
+appId: app.grailbox
+---
+- tapOn:
+    id: "scanner-secondary"
+- extendedWaitUntil:
+    visible:
+      id: "scanner-check-photo"
+      enabled: true
+    timeout: 10000
+- tapOn:
+    id: "scanner-check-photo"
+- extendedWaitUntil:
+    visible: "ON WISHLIST.*"
+    timeout: 30000
