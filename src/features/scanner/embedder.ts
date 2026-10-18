@@ -21,7 +21,7 @@ import { centerSquare, EMBEDDING_DIM, INPUT_SIZE, l2Normalize, toInputTensor, ty
  * references.ts recomputes the ones from an older model.
  *
  * Measured on a Galaxy S24+ (Exynos 2400): the GPU delegate rejects the
- * graph, so it runs on the CPU, about 570 ms per photo. See the README.
+ * graph, so it runs on the CPU, about 570 ms per photo. See docs/IMPLEMENTATION.md.
  */
 
 export const EMBEDDING_MODEL = 'dinov2-vits14-224-fp16';

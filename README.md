@@ -4,7 +4,7 @@ Grailbox is a mobile app for people who collect pop culture items, e.g., plush t
 
 The app works offline and for one person. It has no accounts, no sync, and no network calls, so your photos never leave the phone.
 
-The design comes from `HANDOFF.md` and the Grailbox design canvas. For the architecture, the design decisions, and the scanner's test results, see [IMPLEMENTATION.md](IMPLEMENTATION.md).
+The design comes from the Grailbox design canvas. For how the app is built and why, see [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
 
 ## Before you start
 
@@ -28,10 +28,6 @@ To build in the cloud and run on an Android phone, follow these steps:
 3. Install the APK from the build page on your phone.
 4. Run `npx expo start --dev-client`, and open Grailbox on the phone.
 
-## Load sample data
-
-The app starts empty. To add the sample data from the design canvas, open Settings with the gear button on the Dashboard and tap "Load sample data". The app then adds 3 collections, 8 Rowlet items, and 3 journal entries.
-
 ## Commands
 
 | Command | What it does |
@@ -39,7 +35,7 @@ The app starts empty. To add the sample data from the design canvas, open Settin
 | `npm run lint` | Runs ESLint with `eslint-config-expo`. |
 | `npm run type-check` | Runs `tsc --noEmit`. |
 | `npm test` | Runs the Jest tests. |
-| `npm run e2e` | Runs the Maestro flows in `.maestro/`. You need a simulator or phone with a build installed. |
+| `npm run e2e` | Runs the Maestro flows in `.maestro/`. You need a simulator or phone with a development build installed, because the flows load the sample data. |
 | `npm run db:generate` | Creates a Drizzle migration after you edit `src/db/schema.ts`. |
 
 CI runs lint, the type check, the tests, and an iOS and Android bundle on every push. The workflow is in `.github/workflows/ci.yml`.

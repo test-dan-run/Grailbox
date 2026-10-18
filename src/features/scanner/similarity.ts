@@ -5,7 +5,7 @@
  */
 
 /**
- * Fitted on a Galaxy S24+ (see IMPLEMENTATION.md): 24 labelled scans of 3
+ * Fitted on a Galaxy S24+ (see docs/IMPLEMENTATION.md): 24 labelled scans of 3
  * items, then the 74 reference photos of 30 items replayed with each photo,
  * and then each whole item, left out.
  *

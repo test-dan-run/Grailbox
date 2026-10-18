@@ -174,15 +174,18 @@ export function SettingsScreen() {
           />
         </Card>
 
-        <Card style={styles.card}>
-          <AppText variant="sectionHeading" accessibilityRole="header">
-            Sample data
-          </AppText>
-          <AppText variant="body" color={colors.textBody}>
-            Adds the three sample collections from the design, with eight Rowlet items and three journal entries.
-          </AppText>
-          <SecondaryButton label="Load sample data" onPress={loadSample} testID="settings-seed" />
-        </Card>
+        {/* Development and the demo build only: the demo video's capture step loads the sample data. */}
+        {(__DEV__ || DEMO) && (
+          <Card style={styles.card}>
+            <AppText variant="sectionHeading" accessibilityRole="header">
+              Sample data
+            </AppText>
+            <AppText variant="body" color={colors.textBody}>
+              Adds the three sample collections from the design, with eight Rowlet items and three journal entries.
+            </AppText>
+            <SecondaryButton label="Load sample data" onPress={loadSample} testID="settings-seed" />
+          </Card>
+        )}
 
         {__DEV__ && (
           <Card style={styles.card}>
