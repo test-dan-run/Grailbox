@@ -1,4 +1,11 @@
-import { centerSquare, frameCrop, INPUT_SIZE, l2Normalize, toInputTensor } from '@/features/scanner/preprocess';
+import {
+  centerSquare,
+  frameCrop,
+  INPUT_SIZE,
+  l2Normalize,
+  smallestPictureSize,
+  toInputTensor,
+} from '@/features/scanner/preprocess';
 
 const PIXELS = INPUT_SIZE * INPUT_SIZE;
 
@@ -16,6 +23,18 @@ describe('embedding preprocessing', () => {
     expect(frameCrop(3000, 4000, 384, 832, 272, 1)).toEqual({ originX: 846, originY: 1346, width: 1307, height: 1307 });
     // Never larger than the photo.
     expect(frameCrop(300, 400, 384, 832, 2000)).toEqual({ originX: 0, originY: 50, width: 300, height: 300 });
+  });
+
+  it('picks the smallest 4:3 camera size that is large enough', () => {
+    const sizes = ['4080x3060', '4000x2252', '1920x1080', '1440x1080', '1280x960', '2048x1536', '640x480'];
+    expect(smallestPictureSize(sizes, 1080)).toBe('1440x1080');
+    expect(smallestPictureSize(sizes, 1200)).toBe('2048x1536');
+    expect(smallestPictureSize(['3060x4080', '1080x1440'], 1080)).toBe('1080x1440');
+    // None qualifies, or the list is iOS presets: keep the camera's default.
+    expect(smallestPictureSize(['1920x1080', '640x480'], 1080)).toBeUndefined();
+    expect(smallestPictureSize(['Photo', 'High', '1920x1080'], 1080)).toBeUndefined();
+    // With a 1080 px short side, the S24+ crop is still more than twice the model's input.
+    expect(frameCrop(1080, 1440, 384, 832, 272).width).toBeGreaterThan(2 * INPUT_SIZE);
   });
 
   it('normalizes RGB with the ImageNet mean and std, in NHWC order', () => {

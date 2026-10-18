@@ -1,0 +1,14 @@
+diff --git a/node_modules/react-native-fast-tflite/cpp/HybridTfliteModule.cpp b/node_modules/react-native-fast-tflite/cpp/HybridTfliteModule.cpp
+index 38c82d1..6e57820 100644
+--- a/node_modules/react-native-fast-tflite/cpp/HybridTfliteModule.cpp
++++ b/node_modules/react-native-fast-tflite/cpp/HybridTfliteModule.cpp
+@@ -40,6 +40,9 @@ HybridTfliteModule::createModel(const std::shared_ptr<ArrayBuffer>& modelData,
+ 
+   // Configure interpreter via options
+   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
++  // Grailbox: run CPU kernels on one thread. The default (-1) leaves XNNPACK
++  // single-threaded but lets Eigen kernels start a pool of several threads.
++  TfLiteInterpreterOptionsSetNumThreads(options, 1);
+ 
+   // Add all hardware accelerated delegates (e.g. GPU, NPU, ...)
+   // if any. The default CPU delegate will always be available.

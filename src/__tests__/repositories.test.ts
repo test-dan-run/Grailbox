@@ -9,7 +9,7 @@ import {
   reorderCollections,
   listCollections,
 } from '@/db/repositories/collections';
-import { listVectors, markDupeCheck, pendingReferences, setEmbedding, syncReferencePhotos } from '@/db/repositories/embeddings';
+import { listVectors, pendingReferences, setEmbedding, syncReferencePhotos } from '@/db/repositories/embeddings';
 import {
   barcodeCandidates,
   createItem,
@@ -240,14 +240,7 @@ describe('journal', () => {
   });
 });
 
-describe('dupe check references', () => {
-  it('adds each photo once', async () => {
-    const c = await createCollection({ name: 'C' });
-    const id = await createItem(item(c, { photos: ['photos/a.jpg', 'photos/b.jpg'] }));
-    expect(await markDupeCheck(id)).toEqual({ added: 2, total: 2 });
-    expect(await markDupeCheck(id)).toEqual({ added: 0, total: 2 });
-  });
-
+describe('scanner references', () => {
   it('makes every item photo a reference, and drops removed photos', async () => {
     const c = await createCollection({ name: 'C' });
     const a = await createItem(item(c, { photos: ['photos/a.jpg', 'photos/b.jpg'] }));

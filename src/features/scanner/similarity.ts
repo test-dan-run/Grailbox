@@ -5,17 +5,19 @@
  */
 
 /**
- * PROVISIONAL: fitted to 24 labelled scans of 3 items on a Galaxy S24+, not
- * yet the 30-item test the handoff requires (see the README).
+ * Fitted on a Galaxy S24+ (see IMPLEMENTATION.md): 24 labelled scans of 3
+ * items, then the 74 reference photos of 30 items replayed with each photo,
+ * and then each whole item, left out.
  *
  * A match needs both a score of at least MATCH_THRESHOLD and a lead of at
  * least MATCH_MIN_GAP over the next item. The lead is what separates
- * look-alikes: a small Rowlet item not in the collection scored 0.814 against
- * a Rowlet plush, only 0.067 ahead of a second Rowlet, while every real match led by 0.12 or more.
- * On those scans this matched 15 of 20 real items with no false matches;
- * the right item ranked first in all 20, so misses still list it first.
+ * look-alikes: a Rowlet not in the collection scored 0.831, 0.089 ahead of the
+ * next item, so the lead stays at 0.10. The threshold rose from 0.65 to 0.70
+ * because two left-out items scored 0.681 and 0.676 with leads over 0.10.
+ * On the 30 items this matched 40 of 67 known photos with no wrong or false
+ * matches; the right item ranked first in 60, so misses usually list it first.
  */
-export const MATCH_THRESHOLD = 0.65;
+export const MATCH_THRESHOLD = 0.7;
 export const MATCH_MIN_GAP = 0.1;
 
 export interface ReferenceVector {

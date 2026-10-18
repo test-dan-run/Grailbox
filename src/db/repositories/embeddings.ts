@@ -6,36 +6,6 @@ import { getDb, notifyChange } from '../database';
 import { itemEmbeddings, items } from '../schema';
 
 /**
- * "Mark as Dupe Check": adds an item's photos to the scanner's reference set.
- * Rows start without a vector; the phase 2 embedder fills them in.
- * Returns how many photos the item now has in the set.
- */
-export async function markDupeCheck(itemId: string): Promise<{ added: number; total: number }> {
-  const db = getDb();
-  const [item] = await db.select({ photos: items.photos }).from(items).where(eq(items.id, itemId));
-  if (!item) throw new Error('Item not found');
-  const existing = await db
-    .select({ photo_uri: itemEmbeddings.photo_uri })
-    .from(itemEmbeddings)
-    .where(eq(itemEmbeddings.item_id, itemId));
-  const have = new Set(existing.map((r) => r.photo_uri));
-  const fresh = (item.photos ?? []).filter((p) => !have.has(p));
-  for (const photo of fresh) {
-    await db.insert(itemEmbeddings).values({ id: newId(), item_id: itemId, photo_uri: photo, created_at: nowIso() });
-  }
-  if (fresh.length) notifyChange();
-  return { added: fresh.length, total: have.size + fresh.length };
-}
-
-export async function referenceCount(itemId: string): Promise<number> {
-  const rows = await getDb()
-    .select({ id: itemEmbeddings.id })
-    .from(itemEmbeddings)
-    .where(eq(itemEmbeddings.item_id, itemId));
-  return rows.length;
-}
-
-/**
  * Makes every item photo a reference photo, and drops references to photos
  * that are no longer on their item. Returns whether anything changed.
  */

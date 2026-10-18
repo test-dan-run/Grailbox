@@ -1,4 +1,4 @@
-import { cosine, decide, rankItems } from '@/features/scanner/similarity';
+import { cosine, decide, MATCH_MIN_GAP, MATCH_THRESHOLD, rankItems } from '@/features/scanner/similarity';
 
 const v = (...n: number[]) => new Float32Array(n);
 
@@ -46,5 +46,14 @@ describe('visual matching', () => {
     expect(decide(clear, 0.65, 0.1)).toEqual({ kind: 'match', match: clear[0] });
     // A single candidate has nothing to lead.
     expect(decide([clear[0]], 0.65, 0.1)).toEqual({ kind: 'match', match: clear[0] });
+  });
+
+  it('rejects the near misses measured on the 30-item set', () => {
+    const rule = (ranked: { item_id: string; score: number }[]) => decide(ranked, MATCH_THRESHOLD, MATCH_MIN_GAP).kind;
+    // Items not in the collection: a clear lead but a low score, and a high score with too small a lead.
+    expect(rule([{ item_id: 'a', score: 0.681 }, { item_id: 'b', score: 0.572 }])).toBe('nomatch');
+    expect(rule([{ item_id: 'a', score: 0.831 }, { item_id: 'b', score: 0.742 }])).toBe('nomatch');
+    // A Maneki-Rowlet scan at the smaller capture size.
+    expect(rule([{ item_id: 'a', score: 0.867 }, { item_id: 'b', score: 0.667 }])).toBe('match');
   });
 });
