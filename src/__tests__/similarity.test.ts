@@ -32,4 +32,19 @@ describe('visual matching', () => {
     expect(decide(ranked, 0.95)).toEqual({ kind: 'nomatch', suggestions: ranked });
     expect(decide([], 0.5)).toEqual({ kind: 'nomatch', suggestions: [] });
   });
+
+  it('needs a clear lead over the next item', () => {
+    const lookalikes = [
+      { item_id: 'a', score: 0.814 },
+      { item_id: 'b', score: 0.747 },
+    ];
+    expect(decide(lookalikes, 0.65, 0.1)).toEqual({ kind: 'nomatch', suggestions: lookalikes });
+    const clear = [
+      { item_id: 'a', score: 0.785 },
+      { item_id: 'b', score: 0.612 },
+    ];
+    expect(decide(clear, 0.65, 0.1)).toEqual({ kind: 'match', match: clear[0] });
+    // A single candidate has nothing to lead.
+    expect(decide([clear[0]], 0.65, 0.1)).toEqual({ kind: 'match', match: clear[0] });
+  });
 });

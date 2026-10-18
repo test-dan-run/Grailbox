@@ -24,10 +24,11 @@ import { formatMoney } from '@/lib/money';
 import { goBack } from '@/lib/nav';
 import { colors, fonts, radii, shadows, spacing, type as typeScale } from '@/theme';
 
+import { saveDebugScan } from './debugScans';
 import { EMBEDDING_MODEL, embedImage, getEmbeddingModel } from './embedder';
-import { frameCrop } from './preprocess';
+import { frameCrop, type CropRect } from './preprocess';
 import { updateReferences } from './references';
-import { decide, MATCH_THRESHOLD, rankItems } from './similarity';
+import { decide, MATCH_MIN_GAP, MATCH_THRESHOLD, rankItems } from './similarity';
 
 /*
  * 06 · Scanner & Dupe Verifier. Two ways to match, behind the same four
@@ -120,8 +121,9 @@ export function ScannerScreen() {
       const t0 = performance.now();
       picture = await camera.current.takePictureAsync({ pictureRef: true, shutterSound: false });
       const t1 = performance.now();
+      let crop: CropRect | undefined;
       const [vector] = await Promise.all([
-        embedImage(picture, (w, h) => frameCrop(w, h, screen.width, screen.height, FRAME)),
+        embedImage(picture, (w, h) => (crop = frameCrop(w, h, screen.width, screen.height, FRAME))),
         updateReferences(),
       ]);
       const refs = await listVectors(EMBEDDING_MODEL);
@@ -130,11 +132,12 @@ export function ScannerScreen() {
         return;
       }
       const ranked = rankItems(vector, refs, 3);
-      const result = decide(ranked, MATCH_THRESHOLD);
+      const result = decide(ranked, MATCH_THRESHOLD, MATCH_MIN_GAP);
       if (__DEV__) {
         const scores = ranked.map((r) => `${r.item_id.slice(0, 8)} ${r.score.toFixed(3)}`).join(', ');
         const timing = `capture ${Math.round(t1 - t0)} ms (${picture.width}×${picture.height}), embed ${Math.round(performance.now() - t1)} ms`;
         console.log(`[Scanner] ${timing}; scores ${scores}`);
+        await saveDebugScan(picture, { crop, screen, ranked }).catch((e) => console.warn('Debug scan not saved', e));
       }
       if (result.kind === 'match') {
         const [match] = await findItemMatches([result.match.item_id]);
@@ -152,7 +155,7 @@ export function ScannerScreen() {
     } finally {
       picture?.release();
     }
-  }, [screen.width, screen.height, showMatch, showNoMatch]);
+  }, [screen, showMatch, showNoMatch]);
 
   const scanAgain = () => {
     busy.current = false;
@@ -234,7 +237,7 @@ export function ScannerScreen() {
         {matching && granted && (
           <View style={{ alignItems: 'center', gap: 2, marginBottom: 6 }}>
             <AppText variant="label" style={{ fontFamily: fonts.regular, textAlign: 'center' }} color="#CBD5E1">
-              {checking ? 'Hold steady…' : 'Center the item in the frame, then tap Check'}
+              {checking ? 'Hold steady…' : 'Fit the whole item inside the frame, then tap Check'}
             </AppText>
             <Pressable
               accessibilityRole="link"
