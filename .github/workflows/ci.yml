@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   check:
@@ -20,3 +21,35 @@ jobs:
       - run: npm test -- --ci
       - name: Bundle iOS and Android
         run: npx expo export --platform ios --platform android --output-dir dist
+
+  android-apk:
+    needs: check
+    # A push already builds the branch, so skip the copy a pull request would make.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - name: Generate the android/ folder
+        run: npx expo prebuild --platform android --no-install
+      # The release build embeds the JavaScript bundle, so it runs without Metro.
+      # It is signed with the debug key, which is fine for sideloading but not
+      # for the Play Store. Building arm64 only keeps the build fast, and covers
+      # nearly every phone in use.
+      - name: Build the release APK
+        working-directory: android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grailbox-${{ github.sha }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30

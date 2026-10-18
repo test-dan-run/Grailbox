@@ -40,6 +40,8 @@ To build in the cloud and run on an Android phone, follow these steps:
 
 CI runs lint, the type check, the tests, and an iOS and Android bundle on every push. The workflow is in `.github/workflows/ci.yml`.
 
+When those checks pass, CI also builds an Android release APK for arm64 phones. To get it, open the run on the Actions tab and download the `grailbox-<commit>` file under Artifacts. It's a zip with the APK inside. The APK is signed with the debug key, so you can install it on a phone but can't upload it to the Play Store. GitHub keeps it for 30 days. You can also start a build by hand with "Run workflow" on the Actions tab.
+
 ## Store video
 
 The `video/` folder makes a showcase video from screen recordings of a demo build of the app. The demo build uses real Rowlet product photos, so the video is for internal showcases only. See [video/README.md](video/README.md).
