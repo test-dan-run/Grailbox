@@ -170,13 +170,25 @@ export function barcodeCandidates(code: string): string[] {
   return [...out];
 }
 
-export interface BarcodeMatch {
+export interface ItemMatch {
   item: CollectibleItem;
   collection_name: string;
 }
 
+/** Items with their collection names, in the order of `ids` (for ranked photo matches). Missing ids are skipped. */
+export async function findItemMatches(ids: string[]): Promise<ItemMatch[]> {
+  if (ids.length === 0) return [];
+  const rows = await getDb()
+    .select({ ...getTableColumns(items), collection_name: collections.name })
+    .from(items)
+    .innerJoin(collections, eq(collections.id, items.collection_id))
+    .where(inArray(items.id, ids));
+  const byId = new Map(rows.map(({ collection_name, ...row }) => [row.id, { item: toItem(row), collection_name }]));
+  return ids.flatMap((id) => byId.get(id) ?? []);
+}
+
 /** Exact barcode match. Owned and in-transit copies win over wishlist entries. */
-export async function findByBarcode(code: string): Promise<BarcodeMatch | undefined> {
+export async function findByBarcode(code: string): Promise<ItemMatch | undefined> {
   const keys = barcodeCandidates(code);
   if (keys.length === 0) return undefined;
   const rows = await getDb()

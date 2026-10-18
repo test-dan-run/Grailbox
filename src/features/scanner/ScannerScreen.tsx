@@ -1,9 +1,9 @@
-import { CameraView, useCameraPermissions, type BarcodeScanningResult, type BarcodeType } from 'expo-camera';
+import { CameraView, useCameraPermissions, type BarcodeScanningResult, type BarcodeType, type PictureRef } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -15,25 +15,36 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CloseIcon, FlashIcon, ImageIcon, StarFilledIcon, WarningIcon } from '@/components/Icons';
+import { CameraIcon, ChevronRightIcon, CloseIcon, FlashIcon, ImageIcon, StarFilledIcon, WarningIcon } from '@/components/Icons';
 import { AppText, CONDITION_META, IconButton, Photo, PRIORITY_LABEL, PrimaryButton, SecondaryButton } from '@/components/ui';
-import { findByBarcode, grailboxTotals, type BarcodeMatch } from '@/db/repositories/items';
+import { listVectors } from '@/db/repositories/embeddings';
+import { findByBarcode, findItemMatches, grailboxTotals, type ItemMatch } from '@/db/repositories/items';
 import { useQuery } from '@/db/useQuery';
 import { formatMoney } from '@/lib/money';
 import { goBack } from '@/lib/nav';
 import { colors, fonts, radii, shadows, spacing, type as typeScale } from '@/theme';
 
+import { EMBEDDING_MODEL, embedImage, getEmbeddingModel } from './embedder';
+import { frameCrop } from './preprocess';
+import { updateReferences } from './references';
+import { decide, MATCH_THRESHOLD, rankItems } from './similarity';
+
 /*
- * 06 · Scanner & Dupe Verifier, phase 1: exact barcode matching against
- * specs.barcode. Four banner states: matching, already owned, on wishlist,
- * no match. No photo leaves the device.
+ * 06 · Scanner & Dupe Verifier. Two ways to match, behind the same four
+ * banner states (matching, already owned, on wishlist, no match):
+ * - a barcode equal to an item's specs.barcode, read live by the camera;
+ * - "Check this item": one photo of the area inside the guides, embedded on
+ *   device and ranked against every item photo (similarity.ts).
+ * No photo leaves the device.
  */
 
+type Via = { by: 'barcode'; code: string } | { by: 'photo'; score: number };
+
 type ScanState =
-  | { kind: 'matching' }
-  | { kind: 'owned'; match: BarcodeMatch; code: string }
-  | { kind: 'wishlist'; match: BarcodeMatch; code: string }
-  | { kind: 'nomatch'; code: string };
+  | { kind: 'matching'; checking?: boolean }
+  | { kind: 'owned'; match: ItemMatch; via: Via }
+  | { kind: 'wishlist'; match: ItemMatch; via: Via }
+  | { kind: 'nomatch'; code?: string; suggestions: ItemMatch[]; note?: string };
 
 const BARCODE_TYPES: BarcodeType[] = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'itf14', 'qr', 'datamatrix'];
 const FRAME = 272;
@@ -43,9 +54,12 @@ export function ScannerScreen() {
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
   const reduceMotion = useReducedMotion();
+  const screen = useWindowDimensions();
   const [permission, requestPermission] = useCameraPermissions();
   const [state, setState] = useState<ScanState>({ kind: 'matching' });
   const [flash, setFlash] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const camera = useRef<CameraView>(null);
   const busy = useRef(false);
   const totals = useQuery(grailboxTotals, []);
 
@@ -53,26 +67,92 @@ export function ScannerScreen() {
     if (permission && !permission.granted && permission.canAskAgain) requestPermission();
   }, [permission, requestPermission]);
 
-  const onScanned = useCallback(async (result: BarcodeScanningResult) => {
-    if (busy.current) return;
-    busy.current = true;
-    const code = result.data.trim();
-    const match = await findByBarcode(code);
-    if (!match) {
-      setState({ kind: 'nomatch', code });
-      AccessibilityInfo.announceForAccessibility('No match. This item is not in your Grailbox yet.');
-      return;
-    }
+  // The camera unmounts when another screen covers the scanner, and is not ready again until it says so.
+  const [wasFocused, setWasFocused] = useState(focused);
+  if (focused !== wasFocused) {
+    setWasFocused(focused);
+    if (!focused) setCameraReady(false);
+  }
+
+  // Load the model and catch up on reference photos while the user aims.
+  useEffect(() => {
+    getEmbeddingModel().catch(() => {});
+    updateReferences().catch(() => {});
+  }, []);
+
+  const showMatch = useCallback((match: ItemMatch, via: Via) => {
     if (match.item.status === 'WISHLIST') {
-      setState({ kind: 'wishlist', match, code });
+      setState({ kind: 'wishlist', match, via });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       AccessibilityInfo.announceForAccessibility(`On wishlist: ${match.item.title}. You wanted this!`);
     } else {
-      setState({ kind: 'owned', match, code });
+      setState({ kind: 'owned', match, via });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       AccessibilityInfo.announceForAccessibility(`Already owned: ${match.item.title}.`);
     }
   }, []);
+
+  const showNoMatch = useCallback((next: Omit<Extract<ScanState, { kind: 'nomatch' }>, 'kind'>) => {
+    setState({ kind: 'nomatch', ...next });
+    AccessibilityInfo.announceForAccessibility(
+      next.note ?? `No match. This item is not in your Grailbox yet.${next.suggestions.length ? ' Closest items are listed.' : ''}`,
+    );
+  }, []);
+
+  const onScanned = useCallback(
+    async (result: BarcodeScanningResult) => {
+      if (busy.current) return;
+      busy.current = true;
+      const code = result.data.trim();
+      const match = await findByBarcode(code);
+      if (match) showMatch(match, { by: 'barcode', code });
+      else showNoMatch({ code, suggestions: [] });
+    },
+    [showMatch, showNoMatch],
+  );
+
+  const checkPhoto = useCallback(async () => {
+    if (busy.current || !camera.current) return;
+    busy.current = true;
+    setState({ kind: 'matching', checking: true });
+    let picture: PictureRef | undefined;
+    try {
+      const t0 = performance.now();
+      picture = await camera.current.takePictureAsync({ pictureRef: true, shutterSound: false });
+      const t1 = performance.now();
+      const [vector] = await Promise.all([
+        embedImage(picture, (w, h) => frameCrop(w, h, screen.width, screen.height, FRAME)),
+        updateReferences(),
+      ]);
+      const refs = await listVectors(EMBEDDING_MODEL);
+      if (refs.length === 0) {
+        showNoMatch({ suggestions: [], note: 'No item photos to compare with yet. Add photos to your items first.' });
+        return;
+      }
+      const ranked = rankItems(vector, refs, 3);
+      const result = decide(ranked, MATCH_THRESHOLD);
+      if (__DEV__) {
+        const scores = ranked.map((r) => `${r.item_id.slice(0, 8)} ${r.score.toFixed(3)}`).join(', ');
+        const timing = `capture ${Math.round(t1 - t0)} ms (${picture.width}×${picture.height}), embed ${Math.round(performance.now() - t1)} ms`;
+        console.log(`[Scanner] ${timing}; scores ${scores}`);
+      }
+      if (result.kind === 'match') {
+        const [match] = await findItemMatches([result.match.item_id]);
+        if (match) {
+          showMatch(match, { by: 'photo', score: result.match.score });
+          return;
+        }
+      }
+      showNoMatch({ suggestions: await findItemMatches(ranked.map((r) => r.item_id)) });
+    } catch (e) {
+      console.warn('Photo check failed', e);
+      busy.current = false;
+      setState({ kind: 'matching' });
+      Alert.alert('Could not check the photo', String((e as Error).message ?? e));
+    } finally {
+      picture?.release();
+    }
+  }, [screen.width, screen.height, showMatch, showNoMatch]);
 
   const scanAgain = () => {
     busy.current = false;
@@ -80,6 +160,7 @@ export function ScannerScreen() {
   };
 
   const matching = state.kind === 'matching';
+  const checking = state.kind === 'matching' && !!state.checking;
   const granted = !!permission?.granted;
 
   return (
@@ -87,10 +168,14 @@ export function ScannerScreen() {
       <StatusBar style="light" />
       {granted && focused ? (
         <CameraView
+          ref={camera}
           style={StyleSheet.absoluteFill}
           facing="back"
           enableTorch={flash}
+          animateShutter={false}
+          onCameraReady={() => setCameraReady(true)}
           barcodeScannerSettings={{ barcodeTypes: BARCODE_TYPES }}
+          // Stays bound during a photo check (busy ignores codes then): unbinding rebuilds the camera session and aborts the capture.
           onBarcodeScanned={matching ? onScanned : undefined}
           accessible
           accessibilityLabel="Live camera view"
@@ -130,14 +215,17 @@ export function ScannerScreen() {
         ) : state.kind === 'matching' ? (
           <MatchingBanner items={totals.data?.items} collections={totals.data?.collections} still={reduceMotion} />
         ) : state.kind === 'owned' ? (
-          <OwnedBanner match={state.match} />
+          <OwnedBanner match={state.match} via={state.via} />
         ) : state.kind === 'wishlist' ? (
           <WishlistBanner match={state.match} />
         ) : (
           <NoMatchBanner
             code={state.code}
-            onAdd={() => router.push(`/item/form?status=OWNED&barcode=${encodeURIComponent(state.code)}`)}
-            onSpot={() => router.push(`/wishlist/new?barcode=${encodeURIComponent(state.code)}`)}
+            note={state.note}
+            suggestions={state.suggestions}
+            onOpen={(id) => router.push(`/item/${id}`)}
+            onAdd={() => router.push(`/item/form?status=OWNED${barcodeParam(state.code)}`)}
+            onSpot={() => router.push(state.code ? `/wishlist/new?barcode=${encodeURIComponent(state.code)}` : '/wishlist/new')}
           />
         )}
       </View>
@@ -146,7 +234,7 @@ export function ScannerScreen() {
         {matching && granted && (
           <View style={{ alignItems: 'center', gap: 2, marginBottom: 6 }}>
             <AppText variant="label" style={{ fontFamily: fonts.regular, textAlign: 'center' }} color="#CBD5E1">
-              Hold steady — center the item in the frame
+              {checking ? 'Hold steady…' : 'Center the item in the frame, then tap Check'}
             </AppText>
             <Pressable
               accessibilityRole="link"
@@ -156,10 +244,21 @@ export function ScannerScreen() {
               testID="scanner-search-instead"
             >
               <AppText variant="label" color="#5EEAD4" style={{ textDecorationLine: 'underline' }}>
-                No barcode? Search instead
+                Search by name instead
               </AppText>
             </Pressable>
           </View>
+        )}
+        {matching && granted && (
+          <PrimaryButton
+            label={checking ? 'Checking…' : 'Check this item'}
+            icon={<CameraIcon size={18} color={colors.white} />}
+            onPress={checkPhoto}
+            disabled={!cameraReady || checking}
+            loading={checking}
+            accessibilityHint="Takes a photo of the item in the frame and compares it with your item photos"
+            testID="scanner-check-photo"
+          />
         )}
         {state.kind === 'owned' && (
           <PrimaryButton label="View Existing Item in Grailbox" onPress={() => router.push(`/item/${state.match.item.id}`)} />
@@ -238,7 +337,11 @@ function MatchingBanner({ items, collections, still }: { items?: number; collect
   );
 }
 
-function matchLine(m: BarcodeMatch, kind: 'owned' | 'wishlist') {
+function barcodeParam(code?: string) {
+  return code ? `&barcode=${encodeURIComponent(code)}` : '';
+}
+
+function matchLine(m: ItemMatch, kind: 'owned' | 'wishlist') {
   const it = m.item;
   const parts = [m.collection_name];
   if (kind === 'owned') {
@@ -250,7 +353,12 @@ function matchLine(m: BarcodeMatch, kind: 'owned' | 'wishlist') {
   return parts.join(' · ');
 }
 
-function MatchRow({ m, kind }: { m: BarcodeMatch; kind: 'owned' | 'wishlist' }) {
+function confidenceLabel(via: Via) {
+  if (via.by === 'barcode') return 'Barcode match';
+  return __DEV__ ? `Photo match ${via.score.toFixed(2)}` : 'Photo match';
+}
+
+function MatchRow({ m, kind, via }: { m: ItemMatch; kind: 'owned' | 'wishlist'; via?: Via }) {
   return (
     <View style={styles.matchRow}>
       <Photo path={m.item.photos[0]} tintKey={m.item.id} glyph={18} style={styles.matchPhoto} label={`Photo of ${m.item.title}`} />
@@ -262,10 +370,10 @@ function MatchRow({ m, kind }: { m: BarcodeMatch; kind: 'owned' | 'wishlist' }) 
           {matchLine(m, kind)}
         </AppText>
       </View>
-      {kind === 'owned' && (
+      {kind === 'owned' && via && (
         <View style={styles.confidence}>
           <AppText variant="chip" color={colors.statusOwnedText}>
-            Barcode match
+            {confidenceLabel(via)}
           </AppText>
         </View>
       )}
@@ -273,7 +381,7 @@ function MatchRow({ m, kind }: { m: BarcodeMatch; kind: 'owned' | 'wishlist' }) 
   );
 }
 
-function OwnedBanner({ match }: { match: BarcodeMatch }) {
+function OwnedBanner({ match, via }: { match: ItemMatch; via: Via }) {
   const it = match.item;
   const where = it.status === 'IN_TRANSIT' ? 'In transit' : it.storage_location;
   const sub = `${it.quantity} in Grailbox${where ? ` — ${where}` : ''}`;
@@ -295,12 +403,12 @@ function OwnedBanner({ match }: { match: BarcodeMatch }) {
           </AppText>
         </View>
       </View>
-      <MatchRow m={match} kind="owned" />
+      <MatchRow m={match} kind="owned" via={via} />
     </View>
   );
 }
 
-function WishlistBanner({ match }: { match: BarcodeMatch }) {
+function WishlistBanner({ match }: { match: ItemMatch }) {
   const p = match.item.priority;
   const kicker = `ON WISHLIST${p ? ` · PRIORITY: ${PRIORITY_LABEL[p].toUpperCase()}` : ''}`;
   return (
@@ -326,7 +434,21 @@ function WishlistBanner({ match }: { match: BarcodeMatch }) {
   );
 }
 
-function NoMatchBanner({ code, onAdd, onSpot }: { code: string; onAdd: () => void; onSpot: () => void }) {
+function NoMatchBanner({
+  code,
+  note,
+  suggestions,
+  onOpen,
+  onAdd,
+  onSpot,
+}: {
+  code?: string;
+  note?: string;
+  suggestions: ItemMatch[];
+  onOpen: (itemId: string) => void;
+  onAdd: () => void;
+  onSpot: () => void;
+}) {
   return (
     <View
       style={[styles.banner, { backgroundColor: colors.surfaceCard }]}
@@ -340,10 +462,44 @@ function NoMatchBanner({ code, onAdd, onSpot }: { code: string; onAdd: () => voi
         <AppText variant="body" style={{ fontFamily: typeScale.button.fontFamily }}>
           Not in your Grailbox yet
         </AppText>
-        <AppText variant="meta" color={colors.textSecondary} selectable>
-          Code {code}
-        </AppText>
+        {note && (
+          <AppText variant="meta" color={colors.textSecondary}>
+            {note}
+          </AppText>
+        )}
+        {code && (
+          <AppText variant="meta" color={colors.textSecondary} selectable>
+            Code {code}
+          </AppText>
+        )}
       </View>
+      {suggestions.length > 0 && (
+        <View style={{ gap: 6 }}>
+          <AppText variant="meta" color={colors.textSecondary}>
+            Closest in your Grailbox
+          </AppText>
+          {suggestions.map((m) => (
+            <Pressable
+              key={m.item.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${m.item.title}, ${m.collection_name}. Open item`}
+              onPress={() => onOpen(m.item.id)}
+              style={[styles.matchRow, styles.suggestion]}
+            >
+              <Photo path={m.item.photos[0]} tintKey={m.item.id} glyph={16} style={styles.suggestionPhoto} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <AppText variant="label" numberOfLines={1}>
+                  {m.item.title}
+                </AppText>
+                <AppText variant="meta" color={colors.textSecondary} numberOfLines={1}>
+                  {m.collection_name}
+                </AppText>
+              </View>
+              <ChevronRightIcon size={18} color={colors.textSecondary} />
+            </Pressable>
+          ))}
+        </View>
+      )}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <SecondaryButton label="Add to collection" onPress={onAdd} style={{ flex: 1, paddingHorizontal: 8 }} />
         <SecondaryButton label="Spot for wishlist" onPress={onSpot} style={{ flex: 1, paddingHorizontal: 8 }} />
@@ -411,6 +567,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.7)',
   },
   matchPhoto: { width: 44, height: 44, borderRadius: 10 },
+  suggestion: { minHeight: 52, backgroundColor: colors.surfaceSubtle },
+  suggestionPhoto: { width: 36, height: 36, borderRadius: 8 },
   confidence: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.full, backgroundColor: colors.statusOwnedBg },
   footer: { position: 'absolute', left: 0, right: 0, bottom: 0, gap: 10, paddingHorizontal: spacing.gutter },
 });

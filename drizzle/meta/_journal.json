@@ -15,6 +15,13 @@
       "when": 1792256668663,
       "tag": "0001_search",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792293980779,
+      "tag": "0002_embedding_model",
+      "breakpoints": true
     }
   ]
 }

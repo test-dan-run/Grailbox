@@ -1,4 +1,4 @@
-import { centerSquare, INPUT_SIZE, l2Normalize, toInputTensor } from '@/features/scanner/preprocess';
+import { centerSquare, frameCrop, INPUT_SIZE, l2Normalize, toInputTensor } from '@/features/scanner/preprocess';
 
 const PIXELS = INPUT_SIZE * INPUT_SIZE;
 
@@ -8,6 +8,14 @@ describe('embedding preprocessing', () => {
     expect(centerSquare(810, 1080)).toEqual({ originX: 0, originY: 135, width: 810, height: 810 });
     expect(centerSquare(256, 256)).toEqual({ originX: 0, originY: 0, width: 256, height: 256 });
     expect(centerSquare(101, 100)).toEqual({ originX: 0, originY: 0, width: 100, height: 100 });
+  });
+
+  it('maps the on-screen scan frame to a square of the camera photo', () => {
+    // 3:4 photo under a 384 × 832 pt screen: the preview covers the height, 0.208 pt per photo pixel.
+    expect(frameCrop(3000, 4000, 384, 832, 272)).toEqual({ originX: 748, originY: 1248, width: 1503, height: 1503 });
+    expect(frameCrop(3000, 4000, 384, 832, 272, 1)).toEqual({ originX: 846, originY: 1346, width: 1307, height: 1307 });
+    // Never larger than the photo.
+    expect(frameCrop(300, 400, 384, 832, 2000)).toEqual({ originX: 0, originY: 50, width: 300, height: 300 });
   });
 
   it('normalizes RGB with the ImageNet mean and std, in NHWC order', () => {

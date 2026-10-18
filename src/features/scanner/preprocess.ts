@@ -33,6 +33,31 @@ export function centerSquare(width: number, height: number): CropRect {
 }
 
 /**
+ * The square of a camera photo that was under the scanner's centered
+ * `frame`-px guides. The preview fills a `viewWidth` × `viewHeight` screen
+ * and crops the overflow, so one photo pixel spans `max(view / photo)`
+ * screen pixels. `pad` widens the square a little, so an item that fills the
+ * guides is not cut off.
+ */
+export function frameCrop(
+  photoWidth: number,
+  photoHeight: number,
+  viewWidth: number,
+  viewHeight: number,
+  frame: number,
+  pad = 1.15,
+): CropRect {
+  const scale = Math.max(viewWidth / photoWidth, viewHeight / photoHeight);
+  const side = Math.floor(Math.min((frame * pad) / scale, photoWidth, photoHeight));
+  return {
+    originX: Math.floor((photoWidth - side) / 2),
+    originY: Math.floor((photoHeight - side) / 2),
+    width: side,
+    height: side,
+  };
+}
+
+/**
  * Row-major RGB or RGBA bytes → normalized float32 NHWC tensor, alpha dropped.
  * The image must already be INPUT_SIZE × INPUT_SIZE.
  */

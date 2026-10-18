@@ -16,6 +16,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { openAppDatabase, type ClientDb } from '@/db/client';
 import { setFullTextSearch } from '@/db/database';
+import { startReferenceUpdates } from '@/features/scanner/references';
 import { colors } from '@/theme';
 
 import bundledMigrations from '../../drizzle/migrations';
@@ -62,6 +63,9 @@ function Migrated({ db }: { db: ClientDb }) {
   useEffect(() => {
     if (migration.success || migration.error) SplashScreen.hideAsync().catch(() => {});
   }, [migration.success, migration.error]);
+
+  // Embed new and changed item photos in the background, for the scanner's photo matching.
+  useEffect(() => (migration.success && !WEB ? startReferenceUpdates() : undefined), [migration.success]);
 
   if (migration.error) return <DatabaseError error={migration.error} />;
   if (!migration.success) return null;

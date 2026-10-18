@@ -11,7 +11,7 @@ npm install
 npx expo run:ios        # or: npx expo run:android  (development build)
 ```
 
-Expo SDK 58, React Native 0.88, TypeScript strict. A development build is recommended. Phase 2 of the scanner will need one anyway, because it adds an on-device ML runtime.
+Expo SDK 58, React Native 0.88, TypeScript strict. The app needs a development build, not Expo Go, because the scanner's photo matching uses a native ML runtime. Build one with `npx eas-cli@latest build --profile development --platform android`, install the APK, then run `npx expo start --dev-client`.
 
 Open **Settings** (the gear on the Dashboard) and tap **Load sample data** to seed the canvas data: 3 collections, the 8 Rowlet items and 3 journal entries.
 
@@ -34,16 +34,16 @@ CI (`.github/workflows/ci.yml`) runs lint, type-check, tests and an iOS + Androi
 | 3 | Capture and edit | Done. Wishlist sheet, item, collection and journal forms, photo capture/import with 1080 px and 256 px copies, per-item currency, artist/shop link, Export. |
 | 4 | Journal | Done. Timeline, entry screen, entry form with photos and tagged items. |
 | 5 | Scanner, phase 1 | Done. Camera, corner guides, four banner states, barcode matching, flash, haptics, "Search instead". |
-| 6 | Scanner, phase 2 | **Not done.** The reference-photo table, Mark as Dupe Check and the tested ranking code exist. No model is chosen and no threshold is set (see below). |
+| 6 | Scanner, phase 2 | **Working, threshold provisional.** Every item photo is embedded on device, and "Check this item" in the scanner matches by photo. It runs on a Galaxy S24+. The threshold has not been measured on the 30-item test yet (see below). |
 
 ### What has and has not been verified
 
-- **Verified here:** lint, type-check, 32 Jest tests, and Metro bundles for iOS and Android. `expo-doctor` passes all 20 checks. Every screen was also rendered with react-native-web at 390×844 and compared with its canvas frame.
-- **Not verified here:** no iOS simulator or Android emulator was available in the build environment. These have not been run yet:
-  - the native build itself
+- **Verified on a device (Galaxy S24+, Android 16, EAS development build, 2026-10-18):** the native build, photo import, the camera preview, and photo matching in the scanner (see Phase 2 below).
+- **Verified here:** lint, type-check, 41 Jest tests, and Metro bundles for iOS and Android. `expo-doctor` passes all 20 checks. Every screen was also rendered with react-native-web at 390×844 and compared with its canvas frame.
+- **Not verified yet:**
+  - anything on iOS
   - the Maestro flows
-  - the camera and barcode scanning
-  - photo capture
+  - barcode scanning (no barcoded item was at hand)
   - haptics
   - the Export share sheet
   - the performance target (500 items in under 300 ms on a mid-range Android phone)
@@ -95,7 +95,7 @@ The handoff asks for a record of every choice. Items marked **(deviation)** diff
 - expo-sqlite's web build has no FTS5. The web preview therefore skips that migration and searches with `LIKE`. This path is tested too.
 - Duplicate copies are `quantity` on one item, as decided. The Dashboard and tally counts count items, not copies.
 - Changing an item to Wishlist clears its condition, and changing it away from Wishlist clears its priority, as the data model says.
-- `item_embeddings` is the phase 2 table named in the handoff. Its `vector` column stays empty until a model exists.
+- `item_embeddings` is the phase 2 table named in the handoff. Every item photo gets a row. `vector` holds its embedding and `model` names the model that made it, so a model change recomputes old vectors instead of comparing across models.
 
 **Screens**
 
@@ -139,20 +139,41 @@ Results are announced to screen readers as alerts. Already owned plays a warning
 
 ## Phase 2: what is left
 
-The handoff says not to ship a threshold that has not been tested on real photos. That needs a device and a photo set, so phase 2 stops at the parts that do not depend on the model:
+Photo matching works end to end on a device. The threshold is still provisional, because the handoff says not to ship a threshold that has not been tested on real photos.
 
-- `item_embeddings` table, and **Mark as Dupe Check** on Item Details, which adds the item's photos to the reference set.
-- `src/features/scanner/similarity.ts`: cosine similarity, best score per item, top-k ranking, and the threshold decision (top match, or No match with the 3 closest). Covered by tests.
-- `setEmbedding` / `listVectors` in `src/db/repositories/embeddings.ts` to store vectors as `Float32Array` bytes.
-- The model: DINOv2 ViT-S/14 (Apache-2.0) at 224 px with fp16 weights, in `assets/models/dinov2_vits14.tflite` (44 MB). It outputs a 384-value vector. `scripts/export_dinov2.py` rebuilds it (`uv run scripts/export_dinov2.py`) and checks its output against PyTorch.
-- The runtime: `react-native-fast-tflite`, using the GPU delegate on Android and Core ML on iOS, with a CPU fallback. Its config plugin is in `app.json`, so this needs a new development build.
-- `src/features/scanner/preprocess.ts`: center-square crop, ImageNet normalization into a float32 NHWC tensor, and L2 normalization. Covered by tests.
-- `src/features/scanner/embedder.ts`: `embedImage(uri)` crops and resizes with expo-image-manipulator, decodes the JPEG with `jpeg-js`, runs the model and returns a unit vector. Nothing calls it yet.
+**How it works**
 
-To finish:
+- The model is DINOv2 ViT-S/14 (Apache-2.0) at 224 px with fp16 weights, in `assets/models/dinov2_vits14.tflite` (44 MB). It outputs a 384-value vector. `uv run scripts/export_dinov2.py` rebuilds it and checks it against PyTorch.
+- The runtime is `react-native-fast-tflite`, with a CPU fallback (`src/features/scanner/embedder.ts`). Model runs are queued, one at a time.
+- `src/features/scanner/references.ts` keeps the reference set current. Every item photo gets a vector. It runs at launch and shortly after any data change, one photo at a time, and loads the model only when a photo needs it. Vectors from an older `EMBEDDING_MODEL` are recomputed.
+- The scanner's **Check this item** takes one photo with no shutter sound and crops it to the area inside the corner guides (`frameCrop` in `preprocess.ts`). It then embeds the crop and ranks items by their best-scoring reference photo (`similarity.ts`). At or above `MATCH_THRESHOLD`, it shows Already owned or On wishlist. Below it, it shows No match with the 3 closest items, which open when tapped. Barcodes are still read live alongside.
+- In development builds, the match pill shows the raw score, and Metro logs every check's timing and top scores (`[Scanner] …`).
 
-1. Embed each reference photo when it is saved or marked, and embed the captured frame at scan time.
-2. Photograph at least 30 owned items from new angles, then measure top-1 accuracy across thresholds. Record the measured rate here and set the threshold.
+**Measured on a Samsung Galaxy S24+ (SM-S926B, Exynos 2400, Android 16), development build, 2026-10-18**
+
+| Step | Result |
+| --- | --- |
+| GPU delegate (`android-gpu`, OpenCL) | Fails, falls back to CPU. It accepts 40 of 721 ops (BROADCAST_TO, DEQUANTIZE and a rank-mismatched MUL are unsupported), then fails to prepare on a 1×1×384 CONCATENATION. |
+| Model load | 1.5 s on CPU (2.6 s including the failed GPU attempt). Both include fetching 44 MB from Metro, which a release build does not do. |
+| One inference, CPU | 572 ms median of 5 (568 to 652 ms) |
+| `embedImage` on a stored 1080 px photo | 767 ms (crop and decode 161 ms + inference) |
+| Scanner check | about 1.5 s: capture 0.6 to 0.8 s at 3060×4080, crop and embed 0.7 to 0.8 s |
+| Same photo embedded twice | cosine 1.0000. GPU and CPU outputs agree (1.0000). |
+| Two different Rowlet plush items | cosine 0.756 |
+
+13 scanner checks against 2 Rowlet items gave these results. Front views of the right item scored 0.87 to 0.92, with a gap of 0.10 to 0.20 over the other item. Side views scored 0.61 to 0.81, often within 0.01 to 0.03 of the other item. One side view passed the threshold at 0.810 against 0.804. That was a near tie, not a confident match.
+
+**Fixed while getting this to run**
+
+- `ai-edge-quantizer` writes weights after the flatbuffer (the "buffer offset" format for models over 2 GB). Desktop LiteRT reads that format, but the runtime in fast-tflite does not. Every weight came up empty ("Input tensor 158 lacks data"). The export script now writes the weights back inline.
+- On Android, changing `onBarcodeScanned` on `CameraView` rebuilds the camera session and aborts a `takePictureAsync` that is in progress. The handler stays bound during a photo check.
+
+**To finish**
+
+1. Photograph at least 30 owned items from new angles, then measure top-1 accuracy across thresholds. Record the measured rate here and set `MATCH_THRESHOLD`.
+2. Consider also requiring a minimum gap between the first and second item. Similar items (two Rowlet plushes) score within 0.01 of each other from the side.
+3. Matching improves when an item has photos from more angles, because each item scores by its best reference photo. "Mark as Dupe Check" predates automatic embedding and now only confirms that the item's photos are in the set. It could become "add reference angles" instead.
+4. Speed: the GPU path does not work on this phone. fast-tflite does not set an interpreter thread count, so CPU inference may not be using all cores. Capturing at a smaller `pictureSize` would also shorten the 0.7 s capture.
 
 ## Accessibility notes
 

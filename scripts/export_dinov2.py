@@ -5,6 +5,7 @@
 #   "transformers",
 #   "litert-torch==0.9.4",
 #   "numpy",
+#   "flatbuffers",
 # ]
 #
 # [tool.uv]
@@ -23,6 +24,12 @@ Exports DINOv2 ViT-S/14 to TFLite for the scanner's on-device embeddings.
 
 Weights are stored as fp16 (about half the size) and computed in fp32.
 
+ai-edge-quantizer writes weights after the flatbuffer ("buffer offset"
+format, meant for models over 2 GB). Desktop LiteRT reads that, but the
+runtime in react-native-fast-tflite does not: every weight tensor comes up
+empty ("Input tensor N lacks data"), and the GPU delegate sees the weights as
+runtime inputs. So the weights are moved back inside the flatbuffer.
+
 The checkpoint's position embeddings are for 518 px. DINOv2 resizes them with
 bicubic interpolation on every call, which TFLite cannot lower, so the 224 px
 version is computed once here and baked in as a constant.
@@ -33,8 +40,10 @@ Usage (from the repo root):  uv run scripts/export_dinov2.py
 import tempfile
 from pathlib import Path
 
+import flatbuffers
 import numpy as np
 import torch
+from ai_edge_litert import schema_py_generated as schema
 from ai_edge_litert.interpreter import Interpreter
 from ai_edge_quantizer import quantizer
 from transformers import Dinov2Model
@@ -57,6 +66,35 @@ FP16_WEIGHTS = [
         },
     }
 ]
+
+
+class _AlignedBuilder(flatbuffers.Builder):
+    """Aligns byte vectors (the weight buffers) to 16 bytes, like TFLite's own writer."""
+
+    def CreateNumpyVector(self, x):
+        if x.dtype != np.uint8:
+            return super().CreateNumpyVector(x)
+        self.StartVector(1, x.size, 16)
+        self.head = self.head - x.size
+        self.Bytes[self.Head() : self.Head() + x.size] = x.tobytes()
+        self.vectorNumElems = x.size
+        return self.EndVector()
+
+
+def inline_buffers(data: bytes) -> bytes:
+    """Rewrites a buffer-offset model with every weight inside the flatbuffer."""
+    model = schema.ModelT.InitFromPackedBuf(data, 0)
+    for buf in model.buffers:
+        if buf.offset > 1:
+            buf.data = np.frombuffer(data, np.uint8, buf.size, buf.offset)
+            buf.offset = buf.size = 0
+    builder = _AlignedBuilder(len(data) + (1 << 20))
+    builder.Finish(model.Pack(builder), file_identifier=b"TFL3")
+    out = bytes(builder.Output())
+    check = schema.Model.GetRootAsModel(out, 0)
+    if any(check.Buffers(i).Offset() > 1 for i in range(check.BuffersLength())):
+        raise SystemExit("Some weights are still outside the flatbuffer")
+    return out
 
 
 class Embedder(torch.nn.Module):
@@ -88,7 +126,7 @@ def main():
         fp32 = Path(tmp) / "fp32.tflite"
         edge.export(str(fp32))
         qt = quantizer.Quantizer(str(fp32), FP16_WEIGHTS)
-        OUT.write_bytes(qt.quantize().quantized_model)
+        OUT.write_bytes(inline_buffers(qt.quantize().quantized_model))
 
     # Parity check: the shipped file against PyTorch on fresh inputs.
     interp = Interpreter(model_path=str(OUT))

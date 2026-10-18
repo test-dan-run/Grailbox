@@ -2,12 +2,15 @@
  * Scanner phase 2: rank items by cosine similarity between a captured frame's
  * embedding and each reference photo's embedding. Brute force is fine at
  * collection sizes in the low thousands.
- *
- * The embedding model and the confidence threshold are NOT chosen yet: the
- * handoff requires measuring accuracy on real plush photos from new angles
- * before setting a threshold. Until then no threshold is shipped and the
- * scanner uses phase 1 (barcodes) only.
  */
+
+/**
+ * PROVISIONAL. Not yet measured on the 30-photo test the handoff requires.
+ * The one data point so far (Galaxy S24+): two different Rowlet plush photos
+ * scored 0.756, so this sits a little above that. The scanner logs every
+ * scan's top scores in development, to calibrate it. See the README.
+ */
+export const MATCH_THRESHOLD = 0.8;
 
 export interface ReferenceVector {
   item_id: string;

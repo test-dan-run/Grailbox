@@ -9,13 +9,14 @@ import {
   reorderCollections,
   listCollections,
 } from '@/db/repositories/collections';
-import { markDupeCheck } from '@/db/repositories/embeddings';
+import { listVectors, markDupeCheck, pendingReferences, setEmbedding, syncReferencePhotos } from '@/db/repositories/embeddings';
 import {
   barcodeCandidates,
   createItem,
   deleteItem,
   earliestAcquisition,
   findByBarcode,
+  findItemMatches,
   getItem,
   grailboxTotals,
   listItems,
@@ -245,5 +246,47 @@ describe('dupe check references', () => {
     const id = await createItem(item(c, { photos: ['photos/a.jpg', 'photos/b.jpg'] }));
     expect(await markDupeCheck(id)).toEqual({ added: 2, total: 2 });
     expect(await markDupeCheck(id)).toEqual({ added: 0, total: 2 });
+  });
+
+  it('makes every item photo a reference, and drops removed photos', async () => {
+    const c = await createCollection({ name: 'C' });
+    const a = await createItem(item(c, { photos: ['photos/a.jpg', 'photos/b.jpg'] }));
+    const b = await createItem(item(c, { photos: ['photos/c.jpg'] }));
+    await createItem(item(c));
+    expect(await syncReferencePhotos()).toBe(true);
+    expect(await syncReferencePhotos()).toBe(false);
+    const pending = (await pendingReferences('m1')).map((r) => r.photo_uri).sort();
+    expect(pending).toEqual(['photos/a.jpg', 'photos/b.jpg', 'photos/c.jpg']);
+
+    await updateItem(a, { photos: ['photos/b.jpg'] });
+    expect(await syncReferencePhotos()).toBe(true);
+    expect((await pendingReferences('m1')).map((r) => r.item_id).sort()).toEqual([a, b].sort());
+  });
+
+  it('stores vectors per model and recomputes after a model change', async () => {
+    const c = await createCollection({ name: 'C' });
+    const id = await createItem(item(c, { photos: ['photos/a.jpg'] }));
+    await syncReferencePhotos();
+    const v = new Float32Array([0.6, 0.8, 0]);
+    await setEmbedding(id, 'photos/a.jpg', v, 'm1');
+    expect(await pendingReferences('m1')).toEqual([]);
+    expect(await listVectors('m1')).toEqual([{ item_id: id, vector: v }]);
+    // A newer model ignores the old vector and asks for it again.
+    expect(await listVectors('m2')).toEqual([]);
+    expect(await pendingReferences('m2')).toEqual([{ item_id: id, photo_uri: 'photos/a.jpg' }]);
+  });
+});
+
+describe('photo match lookup', () => {
+  it('returns items with their collection, in ranked order', async () => {
+    const c = await createCollection({ name: 'Shelf' });
+    const a = await createItem(item(c, { title: 'A' }));
+    const b = await createItem(item(c, { title: 'B' }));
+    const found = await findItemMatches([b, 'missing', a]);
+    expect(found.map((m) => [m.item.title, m.collection_name])).toEqual([
+      ['B', 'Shelf'],
+      ['A', 'Shelf'],
+    ]);
+    expect(await findItemMatches([])).toEqual([]);
   });
 });

@@ -80,8 +80,10 @@ export const journalEntries = sqliteTable(
 );
 
 /**
- * Reference photos for duplicate detection. Phase 1 (barcode) leaves `vector`
- * empty; phase 2 fills it with an on-device image embedding.
+ * Reference photos for duplicate detection: every item photo. `vector` is the
+ * photo's on-device image embedding and `model` names the model that made it
+ * (vectors from different models cannot be compared). Both stay empty until
+ * the embedder has run on the photo.
  */
 export const itemEmbeddings = sqliteTable(
   'item_embeddings',
@@ -92,6 +94,7 @@ export const itemEmbeddings = sqliteTable(
       .references(() => items.id, { onDelete: 'cascade' }),
     photo_uri: text('photo_uri').notNull(),
     vector: bytes('vector'),
+    model: text('model'),
     created_at: text('created_at').notNull(),
   },
   (t) => [index('item_embeddings_item_idx').on(t.item_id)],
