@@ -12,6 +12,7 @@ import { getDb } from '@/db/database';
 import { listCollections } from '@/db/repositories/collections';
 import { items } from '@/db/schema';
 import { seedDatabase } from '@/db/seed';
+import { DEMO, seedDemo } from '@/features/demo/demo';
 import { embedImage, getEmbeddingModel, loadEmbeddingModel, prepareImage } from '@/features/scanner/embedder';
 import { l2Normalize } from '@/features/scanner/preprocess';
 import { cosine } from '@/features/scanner/similarity';
@@ -126,7 +127,7 @@ export function SettingsScreen() {
   const loadSample = async () => {
     const existing = await listCollections();
     const go = async () => {
-      await seedDatabase();
+      await (DEMO ? seedDemo() : seedDatabase());
       goBack(router);
     };
     if (existing.length) {

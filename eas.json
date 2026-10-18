@@ -14,6 +14,15 @@
     "preview": {
       "distribution": "internal"
     },
+    "demo": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_DEMO": "1"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "autoIncrement": true
     }

@@ -44,6 +44,10 @@ The app starts empty. To add the sample data from the design canvas, open Settin
 
 CI runs lint, the type check, the tests, and an iOS and Android bundle on every push. The workflow is in `.github/workflows/ci.yml`.
 
+## Store video
+
+The `video/` folder makes the Google Play preview video from screen recordings of a demo build of the app. See [video/README.md](video/README.md).
+
 ## Web preview
 
 Web isn't a supported platform, but you can preview the screens in a browser for design review with `npx expo start --web`. The camera and photo capture don't work on web.

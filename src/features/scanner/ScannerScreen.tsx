@@ -1,5 +1,6 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult, type BarcodeType, type PictureRef } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,12 +21,13 @@ import { AppText, CONDITION_META, IconButton, Photo, PRIORITY_LABEL, PrimaryButt
 import { listVectors } from '@/db/repositories/embeddings';
 import { findByBarcode, findItemMatches, grailboxTotals, type ItemMatch } from '@/db/repositories/items';
 import { useQuery } from '@/db/useQuery';
+import { DEMO, DEMO_SCENES, sceneUri } from '@/features/demo/demo';
 import { formatMoney } from '@/lib/money';
 import { goBack } from '@/lib/nav';
 import { colors, fonts, radii, shadows, spacing, type as typeScale } from '@/theme';
 
 import { saveDebugScan } from './debugScans';
-import { EMBEDDING_MODEL, embedImage, getEmbeddingModel } from './embedder';
+import { EMBEDDING_MODEL, embedImage, getEmbeddingModel, type ImageSource } from './embedder';
 import { frameCrop, smallestPictureSize, type CropRect } from './preprocess';
 import { updateReferences } from './references';
 import { decide, MATCH_MIN_GAP, MATCH_THRESHOLD, rankItems } from './similarity';
@@ -36,7 +38,8 @@ import { decide, MATCH_MIN_GAP, MATCH_THRESHOLD, rankItems } from './similarity'
  * - a barcode equal to an item's specs.barcode, read live by the camera;
  * - "Check this item": one photo of the area inside the guides, embedded on
  *   device and ranked against every item photo (similarity.ts).
- * No photo leaves the device.
+ * No photo leaves the device. The demo build (features/demo) shows still
+ * scenes in place of the camera.
  */
 
 type Via = { by: 'barcode'; code: string } | { by: 'photo'; score: number };
@@ -65,12 +68,14 @@ export function ScannerScreen() {
   const [flash, setFlash] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [size, setSize] = useState(pictureSize);
+  const [sceneIndex, setSceneIndex] = useState(0);
+  const scene = DEMO_SCENES[sceneIndex];
   const camera = useRef<CameraView>(null);
   const busy = useRef(false);
   const totals = useQuery(grailboxTotals, []);
 
   useEffect(() => {
-    if (permission && !permission.granted && permission.canAskAgain) requestPermission();
+    if (!DEMO && permission && !permission.granted && permission.canAskAgain) requestPermission();
   }, [permission, requestPermission]);
 
   // The camera unmounts when another screen covers the scanner, and is not ready again until it says so.
@@ -105,30 +110,43 @@ export function ScannerScreen() {
     );
   }, []);
 
-  const onScanned = useCallback(
-    async (result: BarcodeScanningResult) => {
+  const matchCode = useCallback(
+    async (data: string) => {
       if (busy.current) return;
       busy.current = true;
-      const code = result.data.trim();
+      const code = data.trim();
       const match = await findByBarcode(code);
       if (match) showMatch(match, { by: 'barcode', code });
       else showNoMatch({ code, suggestions: [] });
     },
     [showMatch, showNoMatch],
   );
+  const onScanned = useCallback((result: BarcodeScanningResult) => matchCode(result.data), [matchCode]);
+
+  // Demo build: a scene's barcode is read a moment after the scene shows, as the camera would.
+  const demoCode = DEMO && state.kind === 'matching' && cameraReady ? scene.barcode : undefined;
+  useEffect(() => {
+    if (!demoCode) return;
+    const timer = setTimeout(() => matchCode(demoCode), 1500);
+    return () => clearTimeout(timer);
+  }, [demoCode, matchCode]);
 
   const checkPhoto = useCallback(async () => {
-    if (busy.current || !camera.current) return;
+    const cam = camera.current;
+    if (busy.current || (!DEMO && !cam)) return;
     busy.current = true;
     setState({ kind: 'matching', checking: true });
     let picture: PictureRef | undefined;
     try {
       const t0 = performance.now();
-      picture = await camera.current.takePictureAsync({ pictureRef: true, shutterSound: false });
+      let source: ImageSource;
+      if (DEMO) source = await sceneUri(scene);
+      else source = picture = await cam!.takePictureAsync({ pictureRef: true, shutterSound: false });
       const t1 = performance.now();
       let crop: CropRect | undefined;
       const [vector] = await Promise.all([
-        embedImage(picture, (w, h) => (crop = frameCrop(w, h, screen.width, screen.height, FRAME))),
+        // The demo scene fills the screen like the camera preview does, so the same crop applies.
+        embedImage(source, (w, h) => (crop = frameCrop(w, h, screen.width, screen.height, FRAME))),
         updateReferences(),
       ]);
       const refs = await listVectors(EMBEDDING_MODEL);
@@ -138,7 +156,7 @@ export function ScannerScreen() {
       }
       const ranked = rankItems(vector, refs, 3);
       const result = decide(ranked, MATCH_THRESHOLD, MATCH_MIN_GAP);
-      if (__DEV__) {
+      if (__DEV__ && picture) {
         const scores = ranked.map((r) => `${r.item_id.slice(0, 8)} ${r.score.toFixed(3)}`).join(', ');
         const timing = `capture ${Math.round(t1 - t0)} ms (${picture.width}×${picture.height}), embed ${Math.round(performance.now() - t1)} ms`;
         console.log(`[Scanner] ${timing}; scores ${scores}`);
@@ -160,7 +178,7 @@ export function ScannerScreen() {
     } finally {
       picture?.release();
     }
-  }, [screen, showMatch, showNoMatch]);
+  }, [scene, screen, showMatch, showNoMatch]);
 
   const onCameraReady = useCallback(() => {
     setCameraReady(true);
@@ -179,16 +197,30 @@ export function ScannerScreen() {
   const scanAgain = () => {
     busy.current = false;
     setState({ kind: 'matching' });
+    if (DEMO) {
+      setCameraReady(false);
+      setSceneIndex((i) => (i + 1) % DEMO_SCENES.length);
+    }
   };
 
   const matching = state.kind === 'matching';
   const checking = state.kind === 'matching' && !!state.checking;
-  const granted = !!permission?.granted;
+  const granted = DEMO || !!permission?.granted;
 
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      {granted && focused ? (
+      {granted && focused && DEMO ? (
+        <Image
+          source={scene.image}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={200}
+          onLoad={() => setCameraReady(true)}
+          accessible
+          accessibilityLabel="Live camera view"
+        />
+      ) : granted && focused ? (
         <CameraView
           ref={camera}
           style={StyleSheet.absoluteFill}

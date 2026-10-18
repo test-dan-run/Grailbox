@@ -1,0 +1,152 @@
+# The store video's screen recordings (npm run capture). Each startRecording
+# names a clip that src/scenes.ts places in the video, so the recording order
+# here doesn't need to match the video's order.
+# Needs the demo build (EXPO_PUBLIC_DEMO=1): its scanner shows still scenes in
+# place of the camera, and its sample data has item photos to match against.
+appId: app.grailbox
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Collections"
+    timeout: 15000
+- tapOn:
+    id: "dashboard-settings"
+- tapOn:
+    id: "settings-seed"
+- extendedWaitUntil:
+    visible: "Rowlet Plushies & Merch"
+    timeout: 10000
+# Maestro has no sleep command. A wait for text that never appears, marked
+# optional, pauses for its timeout instead. Here: the sample photos get their
+# scanner embeddings in the background, which takes a few seconds on an emulator.
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 8000
+    optional: true
+
+# The scanner reads the tag's barcode on its own.
+- startRecording: 01-barcode
+- tapOn:
+    id: "dashboard-scan"
+- extendedWaitUntil:
+    visible: "ALREADY OWNED"
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1200
+    optional: true
+- stopRecording
+
+# Scan Again moves to the photo scene.
+- startRecording: 02-photo
+- tapOn:
+    id: "scanner-secondary"
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1200
+    optional: true
+- tapOn:
+    id: "scanner-check-photo"
+- extendedWaitUntil:
+    visible: "ON WISHLIST.*"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1200
+    optional: true
+- stopRecording
+- tapOn:
+    id: "scanner-close"
+
+- startRecording: 03-collection
+- tapOn: "Rowlet Plushies & Merch"
+- extendedWaitUntil:
+    visible: "All (8)"
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1000
+    optional: true
+- tapOn: "Figures (2)"
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1200
+    optional: true
+- tapOn: "All (8)"
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 800
+    optional: true
+- stopRecording
+
+- startRecording: 04-item
+- tapOn: "Rowlet Jumbo Plush.*"
+- extendedWaitUntil:
+    visible: "Owned (1)"
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1200
+    optional: true
+- scroll
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1200
+    optional: true
+- stopRecording
+- back
+
+- startRecording: 05-journal
+- tapOn: "Journal"
+- extendedWaitUntil:
+    visible: "Collecting since Dec 2019"
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1000
+    optional: true
+- tapOn: "Open entry: Grail Found.*"
+- extendedWaitUntil:
+    visible: "Collector note"
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1500
+    optional: true
+- stopRecording
+
+# Back to the Dashboard off camera: a relaunch keeps the data.
+- launchApp
+- extendedWaitUntil:
+    visible: "Collections"
+    timeout: 15000
+
+- startRecording: 06-wishlist
+- tapOn:
+    id: "dashboard-spot"
+- extendedWaitUntil:
+    visible: "Spot a Wishlist Item"
+    timeout: 5000
+- tapOn:
+    id: "wishlist-title"
+- inputText: "Rowlet Gigantamax Plush"
+- tapOn:
+    id: "wishlist-price"
+- inputText: "45"
+- tapOn: "Grail"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 800
+    optional: true
+- tapOn:
+    id: "wishlist-add"
+- extendedWaitUntil:
+    visible: "3 Wishlist"
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "__pause__"
+    timeout: 1200
+    optional: true
+- stopRecording
