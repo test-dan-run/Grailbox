@@ -77,7 +77,8 @@
           "enableAndroidGpuLibraries": true,
           "enableCoreMLDelegate": true
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "scheme": "grailbox",
     "experiments": {

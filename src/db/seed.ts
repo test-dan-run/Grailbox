@@ -21,7 +21,8 @@ const base = {
   specs: {},
 };
 
-export async function seedDatabase() {
+/** Returns the new Rowlet item ids by title. */
+export async function seedDatabase(): Promise<Map<string, string>> {
   const rowlet = await createCollection({
     name: 'Rowlet Plushies & Merch',
     categories: ['Plushies', 'Figures', 'Pin & Flat Merch'],
@@ -181,4 +182,5 @@ export async function seedDatabase() {
     item_ids: [],
     photos: [],
   });
+  return ids;
 }

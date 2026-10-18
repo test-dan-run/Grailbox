@@ -1,0 +1,11 @@
+# From the collection.
+appId: app.grailbox
+---
+- tapOn: "Journal"
+- extendedWaitUntil:
+    visible: "Collecting since Dec 2019"
+    timeout: 5000
+- tapOn: "Open entry: Grail Found.*"
+- extendedWaitUntil:
+    visible: "Collector note"
+    timeout: 5000

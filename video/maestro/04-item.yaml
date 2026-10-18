@@ -1,0 +1,8 @@
+# From the collection.
+appId: app.grailbox
+---
+- tapOn: "Rowlet Jumbo Plush.*"
+- extendedWaitUntil:
+    visible: "Owned (1)"
+    timeout: 5000
+- scroll

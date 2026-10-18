@@ -1,3 +1,4 @@
+import { Asset } from 'expo-asset';
 import { File } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { decode } from 'jpeg-js';
@@ -34,13 +35,24 @@ let loading: Promise<TfliteModel> | null = null;
 
 /** Loads a separate copy of the model on exactly these delegates (`[]` is CPU only). For measurements; the app uses getEmbeddingModel. */
 export async function loadEmbeddingModel(delegates: TensorflowModelDelegate[]): Promise<TfliteModel> {
-  const model = await loadTensorflowModel(modelAsset, delegates);
+  const model = await loadTensorflowModel({ url: await modelUrl() }, delegates);
   const input = model.inputs[0]?.shape.join('×');
   const output = model.outputs[0]?.shape.join('×');
   if (input !== `1×${INPUT_SIZE}×${INPUT_SIZE}×3` || output !== `1×${EMBEDDING_DIM}`) {
     throw new Error(`Unexpected embedding model shape: input ${input}, output ${output}`);
   }
   return model;
+}
+
+/**
+ * A file URL for the bundled model. Android release builds keep it as a raw
+ * resource, whose name ("assets_models_dinov2_vits14") fast-tflite cannot
+ * open, so expo-asset copies it to the cache first.
+ */
+async function modelUrl(): Promise<string> {
+  const asset = await Asset.fromModule(modelAsset).downloadAsync();
+  if (!asset.localUri) throw new Error('Embedding model file is not available');
+  return asset.localUri;
 }
 
 async function load(): Promise<TfliteModel> {

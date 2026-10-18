@@ -1,0 +1,21 @@
+# From the Dashboard.
+appId: app.grailbox
+---
+- tapOn:
+    id: "dashboard-spot"
+- extendedWaitUntil:
+    visible: "Spot a Wishlist Item"
+    timeout: 5000
+- tapOn:
+    id: "wishlist-title"
+- inputText: "Rowlet Gigantamax Plush"
+- tapOn:
+    id: "wishlist-price"
+- inputText: "45"
+- hideKeyboard
+- tapOn: "Grail"
+- tapOn:
+    id: "wishlist-add"
+- extendedWaitUntil:
+    visible: "3 Wishlist"
+    timeout: 5000

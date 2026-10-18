@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Demo build images: real product photos, made by video/ (see video/README.md)
+/assets/demo/
+/video/public/products/

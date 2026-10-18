@@ -1,0 +1,4 @@
+node_modules/
+out/
+# Recorded by scripts/capture.sh (or made by scripts/sample-clips.sh).
+public/clips/

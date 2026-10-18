@@ -1,0 +1,15 @@
+# From the Dashboard. The first scene is a figure you already own.
+appId: app.grailbox
+---
+- tapOn:
+    id: "dashboard-scan"
+- extendedWaitUntil:
+    visible:
+      id: "scanner-check-photo"
+      enabled: true
+    timeout: 10000
+- tapOn:
+    id: "scanner-check-photo"
+- extendedWaitUntil:
+    visible: "ALREADY OWNED"
+    timeout: 30000
