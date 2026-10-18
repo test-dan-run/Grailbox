@@ -58,6 +58,25 @@ export function frameCrop(
 }
 
 /**
+ * The smallest 4:3 size, from camera sizes such as "4080x3060", whose short
+ * side is at least `minSide`. The scanner's crop only needs to be a few times
+ * INPUT_SIZE, and a full-sensor capture costs most of a check's time.
+ * Undefined when no size qualifies, so the camera keeps its default.
+ */
+export function smallestPictureSize(sizes: string[], minSide: number): string | undefined {
+  let best: { size: string; area: number } | undefined;
+  for (const size of sizes) {
+    const m = /^(\d+)x(\d+)$/.exec(size);
+    if (!m) continue;
+    const long = Math.max(Number(m[1]), Number(m[2]));
+    const short = Math.min(Number(m[1]), Number(m[2]));
+    if (short < minSide || long * 3 !== short * 4) continue;
+    if (!best || long * short < best.area) best = { size, area: long * short };
+  }
+  return best?.size;
+}
+
+/**
  * Row-major RGB or RGBA bytes → normalized float32 NHWC tensor, alpha dropped.
  * The image must already be INPUT_SIZE × INPUT_SIZE.
  */

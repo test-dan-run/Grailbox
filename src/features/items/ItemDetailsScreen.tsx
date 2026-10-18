@@ -2,7 +2,6 @@ import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  AccessibilityInfo,
   Alert,
   Linking,
   Platform,
@@ -17,7 +16,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ChevronLeftIcon,
-  DupeCheckIcon,
   EditIcon,
   LinkIcon,
   PinIcon,
@@ -40,7 +38,6 @@ import {
   TagChip,
 } from '@/components/ui';
 import { getCollection } from '@/db/repositories/collections';
-import { markDupeCheck, referenceCount } from '@/db/repositories/embeddings';
 import { getItem } from '@/db/repositories/items';
 import type { CollectibleItem } from '@/db/types';
 import { useQuery } from '@/db/useQuery';
@@ -60,7 +57,6 @@ export function ItemDetailsScreen() {
   const { width } = useWindowDimensions();
   const item = useQuery(() => getItem(id), [id]);
   const collection = useQuery(async () => (item.data ? getCollection(item.data.collection_id) : undefined), [item.data?.collection_id]);
-  const refs = useQuery(() => referenceCount(id), [id]);
   const [page, setPage] = useState(0);
 
   const it = item.data;
@@ -79,19 +75,6 @@ export function ItemDetailsScreen() {
   }
 
   const heroPhotos = it.photos.length ? it.photos : [undefined];
-
-  const onDupeCheck = async () => {
-    if (it.photos.length === 0) {
-      Alert.alert('Add a photo first', 'The scanner matches by photo. Edit the item to add one, then try again.');
-      return;
-    }
-    const { added, total } = await markDupeCheck(it.id);
-    const msg = added
-      ? `Added ${added} ${added === 1 ? 'photo' : 'photos'} to the scanner's reference set.`
-      : `Already in the reference set (${total} ${total === 1 ? 'photo' : 'photos'}).`;
-    AccessibilityInfo.announceForAccessibility(msg);
-    Alert.alert('Dupe check', msg);
-  };
 
   const onShare = () => shareItem(it, collection.data?.name);
 
@@ -154,12 +137,6 @@ export function ItemDetailsScreen() {
           <Provenance item={it} />
 
           <View style={styles.actions}>
-            <ActionTile
-              label={refs.data ? 'In Dupe Check' : 'Mark as Dupe Check'}
-              hint="Adds this item's photos to the scanner's reference set"
-              icon={<DupeCheckIcon size={20} />}
-              onPress={onDupeCheck}
-            />
             <ActionTile
               label="Add to Wishlist"
               hint="Spot a second copy or a variant"

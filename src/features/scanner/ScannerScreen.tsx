@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useIsFocused, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -26,7 +26,7 @@ import { colors, fonts, radii, shadows, spacing, type as typeScale } from '@/the
 
 import { saveDebugScan } from './debugScans';
 import { EMBEDDING_MODEL, embedImage, getEmbeddingModel } from './embedder';
-import { frameCrop, type CropRect } from './preprocess';
+import { frameCrop, smallestPictureSize, type CropRect } from './preprocess';
 import { updateReferences } from './references';
 import { decide, MATCH_MIN_GAP, MATCH_THRESHOLD, rankItems } from './similarity';
 
@@ -49,6 +49,10 @@ type ScanState =
 
 const BARCODE_TYPES: BarcodeType[] = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'itf14', 'qr', 'datamatrix'];
 const FRAME = 272;
+// Android captures the full sensor by default (3060 × 4080 on the S24+, 0.6 to 0.8 s a check). A 1080 px short side
+// still crops to over twice the model's input. Chosen once per app run: '' means no size fit, so keep the default.
+const PHOTO_MIN_SIDE = 1080;
+let pictureSize: string | undefined;
 
 export function ScannerScreen() {
   const router = useRouter();
@@ -60,6 +64,7 @@ export function ScannerScreen() {
   const [state, setState] = useState<ScanState>({ kind: 'matching' });
   const [flash, setFlash] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [size, setSize] = useState(pictureSize);
   const camera = useRef<CameraView>(null);
   const busy = useRef(false);
   const totals = useQuery(grailboxTotals, []);
@@ -157,6 +162,20 @@ export function ScannerScreen() {
     }
   }, [screen, showMatch, showNoMatch]);
 
+  const onCameraReady = useCallback(() => {
+    setCameraReady(true);
+    if (Platform.OS !== 'android' || pictureSize !== undefined) return;
+    camera.current
+      ?.getAvailablePictureSizesAsync()
+      .then((sizes) => {
+        pictureSize = smallestPictureSize(sizes, PHOTO_MIN_SIDE) ?? '';
+        // A new size rebinds the camera, which reports ready again once it reopens.
+        if (pictureSize) setCameraReady(false);
+        setSize(pictureSize);
+      })
+      .catch(() => {});
+  }, []);
+
   const scanAgain = () => {
     busy.current = false;
     setState({ kind: 'matching' });
@@ -176,7 +195,8 @@ export function ScannerScreen() {
           facing="back"
           enableTorch={flash}
           animateShutter={false}
-          onCameraReady={() => setCameraReady(true)}
+          pictureSize={size || undefined}
+          onCameraReady={onCameraReady}
           barcodeScannerSettings={{ barcodeTypes: BARCODE_TYPES }}
           // Stays bound during a photo check (busy ignores codes then): unbinding rebuilds the camera session and aborts the capture.
           onBarcodeScanned={matching ? onScanned : undefined}

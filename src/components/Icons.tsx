@@ -184,13 +184,6 @@ export const StorageIcon = (p: IconProps) => (
   </Icon>
 );
 
-export const DupeCheckIcon = (p: IconProps) => (
-  <Icon strokeWidth={1.7} {...p}>
-    <Rect x={8} y={8} width={12} height={12} rx={2} />
-    <Path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
-  </Icon>
-);
-
 export const WarningIcon = (p: IconProps) => (
   <Icon strokeWidth={2} {...p}>
     <Path d="M12 4l9 16H3z" />
