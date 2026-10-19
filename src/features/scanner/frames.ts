@@ -9,10 +9,14 @@ import { cosine } from './similarity';
  * of real videos (see docs/IMPLEMENTATION.md).
  */
 
-/** Seconds between sampled frames, and the most frames sampled from one video. */
+/**
+ * The least time between sampled frames, in seconds, and the most frames
+ * sampled from one video. Reading a frame takes about 0.45 s on a Galaxy
+ * S24+, so a 10 s video gives 16 frames, about 0.6 s apart.
+ */
 export const SAMPLE_INTERVAL = 0.33;
-export const MAX_SAMPLES = 30;
-/** Consecutive samples per window; the sharpest frame of each window is kept. */
+export const MAX_SAMPLES = 16;
+/** Consecutive samples per window; the sharpest frame of each window is kept, so at most 8 frames are embedded. */
 export const WINDOW_SIZE = 2;
 /** Mean brightness (0 to 255) a frame must fall between. */
 export const MIN_BRIGHTNESS = 40;

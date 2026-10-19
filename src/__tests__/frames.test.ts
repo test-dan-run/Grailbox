@@ -30,11 +30,11 @@ function image(width: number, height: number, value: (x: number, y: number) => n
 const q = (sharpness: number, brightness = 128, clipped = 0): FrameQuality => ({ sharpness, brightness, clipped });
 
 describe('sampling times', () => {
-  it('spreads up to 30 times over the video, away from both ends', () => {
+  it('spreads up to 16 times over the video, away from both ends', () => {
     const times = sampleTimes(10);
-    expect(times).toHaveLength(30);
-    expect(times[0]).toBeCloseTo(10 / 60);
-    expect(times[29]).toBeCloseTo(10 - 10 / 60);
+    expect(times).toHaveLength(16);
+    expect(times[0]).toBeCloseTo(10 / 32);
+    expect(times[15]).toBeCloseTo(10 - 10 / 32);
   });
 
   it('samples a short video every 0.33 s, and a tiny one once', () => {

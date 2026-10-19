@@ -49,7 +49,7 @@ export function saveDebugFrames({
   cover: Float32Array;
   /** Indices into `kept`. */
   selection: FrameSelection;
-  timing: { readMs: number; embedMs: number };
+  timing: { readMs: number; decodeMs: number; prepareMs: number; embedMs: number };
 }) {
   const dir = new Directory(Paths.document, 'frame-debug', new Date().toISOString().replace(/[:.]/g, '-'));
   dir.create({ intermediates: true, idempotent: true });

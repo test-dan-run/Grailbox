@@ -6,7 +6,7 @@ import { newId } from '@/lib/id';
 import { photoUri, storeFramePhoto } from '@/lib/photos';
 
 import { saveDebugFrames } from './debugScans';
-import { embedImage, embedTensor, getEmbeddingModel, prepareImage } from './embedder';
+import { embedImage, embedTensor, prepareImage } from './embedder';
 import { filterFrames, frameQuality, sampleTimes, selectFrames, type FrameQuality } from './frames';
 import { INPUT_SIZE, type CropRect } from './preprocess';
 
@@ -81,14 +81,16 @@ export async function pickScanAngles(
   const check = () => {
     if (cancelled?.()) throw new PickCancelled();
   };
-  // Load the model while the video is read.
-  getEmbeddingModel().catch(() => {});
   const work = new Directory(Paths.cache, 'scan-angles', newId());
   work.create({ intermediates: true, idempotent: true });
+  // Embed the cover photo while the video is read, which doesn't use the model.
+  const coverEmbedding = embedImage(photoUri(cover)!);
+  coverEmbedding.catch(() => {});
   try {
     const t0 = performance.now();
     const full: { frame?: FullFrame } = {};
-    const samples = await sampleFrames(video, work, crop, full, (done, total) => {
+    const read = { decodeMs: 0, prepareMs: 0 };
+    const samples = await sampleFrames(video, work, crop, full, read, (done, total) => {
       check();
       onProgress?.({ stage: 'reading', done, total });
     });
@@ -98,11 +100,11 @@ export async function pickScanAngles(
     const vectors: Float32Array[] = [];
     for (const i of kept) {
       check();
-      onProgress?.({ stage: 'comparing', done: vectors.length, total: kept.length + 1 });
+      onProgress?.({ stage: 'comparing', done: vectors.length, total: kept.length });
       vectors.push(await embedTensor(samples[i].input));
     }
-    onProgress?.({ stage: 'comparing', done: kept.length, total: kept.length + 1 });
-    const coverVector = await embedImage(photoUri(cover)!);
+    onProgress?.({ stage: 'comparing', done: kept.length, total: kept.length });
+    const coverVector = await coverEmbedding;
     check();
     const t2 = performance.now();
 
@@ -112,7 +114,7 @@ export async function pickScanAngles(
     );
     if (__DEV__) {
       console.log(
-        `[Frames] read ${samples.length} frames in ${Math.round(t1 - t0)} ms, embedded ${kept.length + 1} in ${Math.round(t2 - t1)} ms, kept ${selection.chosen.length}`,
+        `[Frames] read ${samples.length} frames in ${Math.round(t1 - t0)} ms (decode ${Math.round(read.decodeMs)}, prepare ${Math.round(read.prepareMs)}), embedded ${kept.length} in ${Math.round(t2 - t1)} ms, kept ${selection.chosen.length}`,
       );
       try {
         saveDebugFrames({
@@ -123,7 +125,7 @@ export async function pickScanAngles(
           vectors,
           cover: coverVector,
           selection,
-          timing: { readMs: t1 - t0, embedMs: t2 - t1 },
+          timing: { readMs: t1 - t0, ...read, embedMs: t2 - t1 },
         });
       } catch (e) {
         console.warn('Debug frames not saved', e);
@@ -153,12 +155,16 @@ export function deleteCachedVideo(uri: string) {
   }
 }
 
-/** Every sampled frame, cropped and saved to `dir`, with its model input and quality. */
+/**
+ * Every sampled frame, cropped and saved to `dir`, with its model input and
+ * quality. Adds the time spent decoding video frames and preparing them to `timing`.
+ */
 async function sampleFrames(
   video: string,
   dir: Directory,
   crop: (width: number, height: number) => CropRect,
   full: { frame?: FullFrame },
+  timing: { decodeMs: number; prepareMs: number },
   progress: (done: number, total: number) => void,
 ): Promise<Sample[]> {
   const player = createVideoPlayer(video);
@@ -167,16 +173,19 @@ async function sampleFrames(
     const out: Sample[] = [];
     for (let b = 0; b < times.length; b += BATCH) {
       progress(b, times.length);
-      for (const thumb of await thumbnails(player, times.slice(b, b + BATCH))) {
+      let t = performance.now();
+      const batch = await thumbnails(player, times.slice(b, b + BATCH));
+      timing.decodeMs += performance.now() - t;
+      t = performance.now();
+      for (const thumb of batch) {
         try {
           if (__DEV__ && !full.frame) full.frame = await saveFullFrame(thumb, crop, dir);
-          const file = await saveFrame(thumb, crop, dir);
-          const { input, pixels } = await prepareImage(file.uri);
-          out.push({ time: thumb.requestedTime, file, input, quality: frameQuality(pixels, INPUT_SIZE, INPUT_SIZE, 3) });
+          out.push({ time: thumb.requestedTime, ...(await prepareFrame(thumb, crop, dir)) });
         } finally {
           thumb.release();
         }
       }
+      timing.prepareMs += performance.now() - t;
     }
     progress(times.length, times.length);
     return out;
@@ -228,8 +237,16 @@ async function thumbnails(player: VideoPlayer, times: number[]): Promise<VideoTh
   }
 }
 
-/** Crops a frame to the square to keep, and saves it as a FRAME_PX JPEG in `dir`. */
-async function saveFrame(thumb: VideoThumbnail, crop: (width: number, height: number) => CropRect, dir: Directory): Promise<File> {
+/**
+ * Crops a frame to the square to keep, and saves it as a FRAME_PX JPEG in
+ * `dir`. The model input and the quality come from the cropped image in
+ * memory, so the JPEG isn't read back.
+ */
+async function prepareFrame(
+  thumb: VideoThumbnail,
+  crop: (width: number, height: number) => CropRect,
+  dir: Directory,
+): Promise<Omit<Sample, 'time'>> {
   const image = await ImageManipulator.manipulate(thumb)
     .crop(crop(thumb.width, thumb.height))
     .resize({ width: FRAME_PX, height: FRAME_PX })
@@ -238,7 +255,8 @@ async function saveFrame(thumb: VideoThumbnail, crop: (width: number, height: nu
     const saved = await image.saveAsync({ format: SaveFormat.JPEG, compress: 0.9 });
     const name = `${newId()}.jpg`;
     new File(saved.uri).moveSync(new File(dir, name));
-    return new File(dir, name);
+    const { input, pixels } = await prepareImage(image);
+    return { file: new File(dir, name), input, quality: frameQuality(pixels, INPUT_SIZE, INPUT_SIZE, 3) };
   } finally {
     image.release();
   }

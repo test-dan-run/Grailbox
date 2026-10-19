@@ -174,9 +174,9 @@ The capture screen records with `CameraView` in video mode, with the `mute` prop
 
 The app picks the frames in five steps. The math is in `src/features/scanner/frames.ts` as pure functions with Jest tests, and `videoFrames.ts` does the native parts.
 
-1. First, the app samples up to 30 frames, one every 0.33 s, with expo-video's `generateThumbnailsAsync`, at 720 px wide. It crops each frame to the area inside the guides with `frameCrop`, the same crop the scanner uses, and it saves the crop as a 448 px JPEG. Frames from a library video get the centered square crop, because nobody framed them with the guides.
+1. First, the app samples up to 16 frames, spread evenly over the video and at least 0.33 s apart, with expo-video's `generateThumbnailsAsync`, at 720 px wide. It crops each frame to the area inside the guides with `frameCrop`, the same crop the scanner uses, and it saves the crop as a 448 px JPEG. Frames from a library video get the centered square crop, because nobody framed them with the guides.
 2. Second, the app scores the sharpness and the exposure of each frame from its 224 px pixels. The sharpness is the variance of the Laplacian of the brightness, where the Laplacian is a 3 × 3 filter that responds to edges, so a blurry frame gets a low score. The app drops frames that are too dark or too bright, keeps the sharper frame of each pair of neighboring frames, and drops frames with less than 35% of the median sharpness.
-3. Third, the app embeds the remaining frames and the cover photo.
+3. Third, the app embeds the remaining frames, which are at most 8. It embeds the cover photo while it reads the video, because reading doesn't use the model.
 4. Fourth, the app drops a frame when its cosine similarity to the cover photo and its similarity to the medoid are both below 0.5. The medoid is the frame with the highest mean similarity to the other frames, and the medoid check keeps views of the back, which can look different from a cover photo of the front.
 5. Fifth, the app picks up to 5 frames with greedy farthest point sampling. It treats the cover photo as already chosen, and in each round it adds the frame that is least similar to its most similar chosen photo, with a small bonus for sharpness. It skips frames with a similarity of 0.95 or more to a chosen photo, so a video of an item that barely turned gives fewer frames.
 
