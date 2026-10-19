@@ -69,6 +69,8 @@ A reference photo is either an item photo or a frame from the item's scan angles
 
 ### Photos
 
+"Take photo" opens the app's own camera screen in `src/components/PhotoCamera.tsx`, instead of the system camera app, so photos always start on the back camera. The image picker asks the system camera for the back lens, but Samsung Camera ignores the request and opens the lens you used last, which is the front lens after a selfie. The app's camera has a flash toggle and pinch zoom. "Choose from library" still uses the system photo picker.
+
 Photo paths are stored relative to the app's document directory, e.g., `photos/<uuid>.jpg`, instead of as absolute `file://` URIs. iOS changes the app's container path between app updates, so an absolute path could stop working after an update.
 
 The app saves every photo at two sizes. The main copy is 1080 px, and a 256 px thumbnail sits next to it with a name ending in `_256.jpg`, so lists and grids don't decode full size photos. Scan angle frames are square 448 px JPEGs in the same folder, with no thumbnail, because no list shows them.

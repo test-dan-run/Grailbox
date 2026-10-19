@@ -1,14 +1,15 @@
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View, type TextInputProps } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View, type TextInputProps } from 'react-native';
 
 import { CURRENCIES } from '@/lib/currencies';
 import { formatMonthYear, fromIsoDate, toIsoDate } from '@/lib/dates';
 import { currencySymbol, formatPriceInput } from '@/lib/money';
-import { PhotoPermissionError, pickPhotos, type PhotoSource } from '@/lib/photos';
+import { pickLibraryPhotos, type PhotoSource } from '@/lib/photos';
 import { colors, radii, spacing, type as typeScale } from '@/theme';
 
 import { CameraIcon, ChevronDownIcon, CloseIcon, ImageIcon, MinusIcon, PlusIcon, StarFilledIcon } from './Icons';
+import { PhotoCamera } from './PhotoCamera';
 import { ActionSheet, PickerSheet, type PickerOption, type SheetAction } from './Sheet';
 import { AppText, Grabber, IconButton, Photo, TextButton } from './ui';
 
@@ -434,27 +435,35 @@ export function ChoicePills({
 
 function usePhotoSource(onAdd: (paths: string[], source: PhotoSource) => void, multiple: boolean, extraActions: SheetAction[] = []) {
   const [choosing, setChoosing] = useState(false);
+  const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = async (source: PhotoSource) => {
+    if (source === 'camera') {
+      setCamera(true);
+      return;
+    }
     try {
       setBusy(true);
-      const paths = await pickPhotos(source, { multiple });
+      const paths = await pickLibraryPhotos({ multiple });
       if (paths.length) onAdd(paths, source);
     } catch (e) {
-      if (e instanceof PhotoPermissionError) {
-        Alert.alert('Camera access is off', 'Allow camera access in Settings to snap photos.', [
-          { text: 'Not now', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ]);
-      } else {
-        Alert.alert('Could not add the photo', String((e as Error).message ?? e));
-      }
+      Alert.alert('Could not add the photo', String((e as Error).message ?? e));
     } finally {
       setBusy(false);
     }
   };
   const sheet = (
-    <ActionSheet
+    <>
+      {camera && (
+        <PhotoCamera
+          onCapture={(path) => {
+            setCamera(false);
+            onAdd([path], 'camera');
+          }}
+          onClose={() => setCamera(false)}
+        />
+      )}
+      <ActionSheet
       visible={choosing}
       onClose={() => setChoosing(false)}
       title="Add a photo"
@@ -464,6 +473,7 @@ function usePhotoSource(onAdd: (paths: string[], source: PhotoSource) => void, m
         ...extraActions,
       ]}
     />
+    </>
   );
   return { open: () => setChoosing(true), sheet, busy };
 }

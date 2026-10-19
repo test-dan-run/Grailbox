@@ -79,35 +79,24 @@ export function deletePhotoFiles(relPaths: string[]) {
   }
 }
 
+/** Where a new photo came from: the app's camera (components/PhotoCamera.tsx) or the photo library. */
 export type PhotoSource = 'camera' | 'library';
 
 /**
- * Opens the camera or the photo library and imports what the user picks.
- * Returns stored paths, or [] when cancelled or permission is denied.
+ * Opens the photo library and imports what the user picks. Returns stored
+ * paths, or [] when cancelled.
  */
-export async function pickPhotos(source: PhotoSource, opts: { multiple?: boolean } = {}): Promise<string[]> {
-  if (source === 'camera') {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) throw new PhotoPermissionError('camera');
-  }
-  const options: ImagePicker.ImagePickerOptions = {
+export async function pickLibraryPhotos(opts: { multiple?: boolean } = {}): Promise<string[]> {
+  const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     quality: 1,
-    allowsMultipleSelection: source === 'library' && !!opts.multiple,
+    allowsMultipleSelection: !!opts.multiple,
     selectionLimit: opts.multiple ? 10 : 1,
-  };
-  const result =
-    source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+  });
   if (result.canceled) return [];
   const out: string[] = [];
   for (const asset of result.assets) out.push(await importPhoto(asset));
   return out;
-}
-
-export class PhotoPermissionError extends Error {
-  constructor(public kind: 'camera') {
-    super('Camera permission was denied');
-  }
 }
 
 /** Every stored photo file (display copies and thumbnails), for Export. */
