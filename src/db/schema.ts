@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { customType, index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
-import type { Condition, ItemStatus, JournalEntryType, Origin, Priority } from './types';
+import type { Condition, ItemStatus, JournalEntryType, Origin, Priority, ReferenceSource } from './types';
 
 /*
  * SQLite schema. Arrays are stored as JSON text. Item specs are flattened into
@@ -80,10 +80,11 @@ export const journalEntries = sqliteTable(
 );
 
 /**
- * Reference photos for duplicate detection: every item photo. `vector` is the
- * photo's on-device image embedding and `model` names the model that made it
- * (vectors from different models cannot be compared). Both stay empty until
- * the embedder has run on the photo.
+ * Reference photos for duplicate detection: every item photo, plus the hidden
+ * frames picked from the item's scan angles video (`source` 'video'). `vector`
+ * is the photo's on-device image embedding and `model` names the model that
+ * made it (vectors from different models cannot be compared). Both stay empty
+ * until the embedder has run on the photo.
  */
 export const itemEmbeddings = sqliteTable(
   'item_embeddings',
@@ -93,6 +94,7 @@ export const itemEmbeddings = sqliteTable(
       .notNull()
       .references(() => items.id, { onDelete: 'cascade' }),
     photo_uri: text('photo_uri').notNull(),
+    source: text('source').$type<ReferenceSource>().notNull().default('photo'),
     vector: bytes('vector'),
     model: text('model'),
     created_at: text('created_at').notNull(),

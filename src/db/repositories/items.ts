@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, getTableColumns, inArray, isNotNull, like, m
 import { newId, nowIso } from '@/lib/id';
 
 import { getDb, hasFullTextSearch, notifyChange } from '../database';
-import { collections, items, type ItemRow } from '../schema';
+import { collections, itemEmbeddings, items, type ItemRow } from '../schema';
 import type { CollectibleItem, ItemInput, ItemSearchResult, ItemStatus } from '../types';
 import { touchCollection } from './collections';
 
@@ -139,14 +139,19 @@ export async function updateItem(id: string, patch: Partial<ItemInput>) {
   notifyChange();
 }
 
-/** Deletes an item. Returns its photo paths so the caller can remove the files. */
+/** Deletes an item. Returns its photo and scan angle frame paths so the caller can remove the files. */
 export async function deleteItem(id: string): Promise<string[]> {
   const before = await getItem(id);
   if (!before) return [];
+  const frames = await getDb()
+    .select({ photo_uri: itemEmbeddings.photo_uri })
+    .from(itemEmbeddings)
+    .where(and(eq(itemEmbeddings.item_id, id), eq(itemEmbeddings.source, 'video')));
+  // The item's reference rows go with it (ON DELETE CASCADE).
   await getDb().delete(items).where(eq(items.id, id));
   await touchCollection(before.collection_id);
   notifyChange();
-  return before.photos;
+  return [...before.photos, ...frames.map((f) => f.photo_uri)];
 }
 
 /** Strips spaces and dashes from a scanned or typed barcode. */

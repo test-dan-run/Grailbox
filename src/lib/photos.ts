@@ -55,6 +55,16 @@ export async function importPhoto(asset: { uri: string; width: number; height: n
   return rel;
 }
 
+/**
+ * Moves a scan angle frame (an already cropped JPEG) into app storage.
+ * Frames are never shown in lists, so they get no thumbnail. Returns its stored path.
+ */
+export function storeFramePhoto(file: File): string {
+  const name = `${newId()}.jpg`;
+  file.moveSync(new File(photosDir(), name));
+  return `${PHOTO_DIR}/${name}`;
+}
+
 export function deletePhotoFiles(relPaths: string[]) {
   for (const rel of relPaths) {
     if (/^[a-z]+:\/\//i.test(rel)) continue;

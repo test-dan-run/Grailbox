@@ -58,6 +58,9 @@ export interface SheetAction {
   onPress: () => void;
   destructive?: boolean;
   icon?: React.ReactNode;
+  disabled?: boolean;
+  /** A line under the label, e.g., why the action is disabled. */
+  hint?: string;
 }
 
 /** A menu of actions in a bottom sheet (••• menus, photo source). */
@@ -79,17 +82,27 @@ export function ActionSheet({
           <Pressable
             key={a.label}
             accessibilityRole="button"
+            accessibilityState={{ disabled: !!a.disabled }}
+            accessibilityHint={a.hint}
+            disabled={a.disabled}
             onPress={() => {
               onClose();
               // Let the sheet close before the next modal or alert opens.
               setTimeout(a.onPress, 250);
             }}
-            style={({ pressed }) => [styles.action, pressed && { backgroundColor: colors.surfaceSubtle }]}
+            style={({ pressed }) => [styles.action, pressed && { backgroundColor: colors.surfaceSubtle }, a.disabled && { opacity: 0.5 }]}
           >
             {a.icon}
-            <AppText variant="cardTitleSmall" color={a.destructive ? colors.danger : colors.textPrimary}>
-              {a.label}
-            </AppText>
+            <View style={{ flex: 1, paddingVertical: a.hint ? 6 : 0 }}>
+              <AppText variant="cardTitleSmall" color={a.destructive ? colors.danger : colors.textPrimary}>
+                {a.label}
+              </AppText>
+              {a.hint ? (
+                <AppText variant="meta" color={colors.textSecondary}>
+                  {a.hint}
+                </AppText>
+              ) : null}
+            </View>
           </Pressable>
         ))}
         <Pressable

@@ -1,0 +1,1 @@
+ALTER TABLE `item_embeddings` ADD `source` text DEFAULT 'photo' NOT NULL;

@@ -5,6 +5,8 @@ export type Priority = 'GRAIL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type Condition = 'NWT' | 'LOOSE_MINT' | 'BOXED' | 'DISPLAY_ONLY';
 export type Origin = 'OFFICIAL' | 'FAN';
 export type JournalEntryType = 'MILESTONE' | 'BATCH_ADD' | 'NOTE';
+/** Where a scanner reference photo came from: an item photo, or a frame of a scan angles video. */
+export type ReferenceSource = 'photo' | 'video';
 
 export const ITEM_STATUSES: ItemStatus[] = ['OWNED', 'WISHLIST', 'IN_TRANSIT'];
 export const PRIORITIES: Priority[] = ['GRAIL', 'HIGH', 'MEDIUM', 'LOW'];

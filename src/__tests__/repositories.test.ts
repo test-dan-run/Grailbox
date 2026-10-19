@@ -9,7 +9,15 @@ import {
   reorderCollections,
   listCollections,
 } from '@/db/repositories/collections';
-import { listVectors, pendingReferences, setEmbedding, syncReferencePhotos } from '@/db/repositories/embeddings';
+import {
+  listReferenceFrames,
+  listVectors,
+  pendingReferences,
+  referenceFramesByItem,
+  setEmbedding,
+  setReferenceFrames,
+  syncReferencePhotos,
+} from '@/db/repositories/embeddings';
 import {
   barcodeCandidates,
   createItem,
@@ -93,11 +101,13 @@ describe('collections', () => {
     expect(await getCollection(id)).toMatchObject({ name: 'X', categories: ['Plushies', 'Figures'] });
   });
 
-  it('deletes items and entries with the collection and returns their photos', async () => {
+  it('deletes items and entries with the collection and returns their photos and frames', async () => {
     const id = await createCollection({ name: 'Doomed' });
     await createItem(item(id, { photos: ['photos/a.jpg'] }));
     await createEntry({ collection_id: id, date: '2026-01-01', title: 'E', entry_type: 'NOTE', item_ids: [], photos: ['photos/b.jpg'] });
-    expect(await deleteCollection(id)).toEqual(['photos/a.jpg', 'photos/b.jpg']);
+    const framed = await createItem(item(id, { photos: ['photos/c.jpg'] }));
+    await setReferenceFrames(framed, [{ photo_uri: 'photos/f.jpg' }], 'm1');
+    expect(await deleteCollection(id)).toEqual(['photos/a.jpg', 'photos/c.jpg', 'photos/b.jpg', 'photos/f.jpg']);
     expect(await listItems(id)).toHaveLength(0);
     expect(await listEntries(id)).toHaveLength(0);
   });
@@ -139,11 +149,13 @@ describe('items', () => {
     expect((await getCollection(c))!.updated_at > before).toBe(true);
   });
 
-  it('returns photos on delete', async () => {
+  it('returns photos and scan angle frames on delete', async () => {
     const c = await createCollection({ name: 'C' });
     const id = await createItem(item(c, { photos: ['photos/x.jpg'] }));
-    expect(await deleteItem(id)).toEqual(['photos/x.jpg']);
+    await setReferenceFrames(id, [{ photo_uri: 'photos/f1.jpg' }, { photo_uri: 'photos/f2.jpg' }], 'm1');
+    expect(await deleteItem(id)).toEqual(['photos/x.jpg', 'photos/f1.jpg', 'photos/f2.jpg']);
     expect(await getItem(id)).toBeUndefined();
+    expect(await listReferenceFrames(id)).toEqual([]);
   });
 });
 
@@ -267,6 +279,49 @@ describe('scanner references', () => {
     // A newer model ignores the old vector and asks for it again.
     expect(await listVectors('m2')).toEqual([]);
     expect(await pendingReferences('m2')).toEqual([{ item_id: id, photo_uri: 'photos/a.jpg' }]);
+  });
+});
+
+describe('scan angle frames', () => {
+  it('stores frames with their vectors, and keeps them through photo syncs', async () => {
+    const c = await createCollection({ name: 'C' });
+    const id = await createItem(item(c, { photos: ['photos/cover.jpg'] }));
+    const v = new Float32Array([0, 1, 0]);
+    await setReferenceFrames(id, [{ photo_uri: 'photos/f1.jpg', vector: v }, { photo_uri: 'photos/f2.jpg' }], 'm1');
+    await syncReferencePhotos();
+    expect(await listReferenceFrames(id)).toEqual(['photos/f1.jpg', 'photos/f2.jpg']);
+    // f2 came without a vector, so references.ts embeds it along with the cover photo.
+    expect((await pendingReferences('m1')).map((r) => r.photo_uri).sort()).toEqual(['photos/cover.jpg', 'photos/f2.jpg']);
+    expect(await listVectors('m1')).toEqual([{ item_id: id, vector: v }]);
+
+    // Removing every item photo leaves the frames.
+    await updateItem(id, { photos: [] });
+    await syncReferencePhotos();
+    expect(await listReferenceFrames(id)).toEqual(['photos/f1.jpg', 'photos/f2.jpg']);
+  });
+
+  it('replaces the frames, keeping the vectors of frames it still has', async () => {
+    const c = await createCollection({ name: 'C' });
+    const id = await createItem(item(c));
+    const v = new Float32Array([1, 0, 0]);
+    await setReferenceFrames(id, [{ photo_uri: 'photos/f1.jpg', vector: v }, { photo_uri: 'photos/f2.jpg', vector: v }], 'm1');
+    const removed = await setReferenceFrames(id, [{ photo_uri: 'photos/f1.jpg' }, { photo_uri: 'photos/f3.jpg', vector: v }], 'm1');
+    expect(removed).toEqual(['photos/f2.jpg']);
+    expect(await listReferenceFrames(id)).toEqual(['photos/f1.jpg', 'photos/f3.jpg']);
+    expect(await listVectors('m1')).toHaveLength(2);
+    expect(await setReferenceFrames(id, [], 'm1')).toEqual(['photos/f1.jpg', 'photos/f3.jpg']);
+    expect(await listReferenceFrames(id)).toEqual([]);
+  });
+
+  it('lists every item\'s frames for Export', async () => {
+    const c = await createCollection({ name: 'C' });
+    const a = await createItem(item(c));
+    const b = await createItem(item(c, { photos: ['photos/p.jpg'] }));
+    await syncReferencePhotos();
+    await setReferenceFrames(a, [{ photo_uri: 'photos/a1.jpg' }, { photo_uri: 'photos/a2.jpg' }], 'm1');
+    const byItem = await referenceFramesByItem();
+    expect(byItem.get(a)).toEqual(['photos/a1.jpg', 'photos/a2.jpg']);
+    expect(byItem.has(b)).toBe(false);
   });
 });
 

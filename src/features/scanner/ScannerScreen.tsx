@@ -12,7 +12,6 @@ import Animated, {
   useSharedValue,
   withRepeat,
   withTiming,
-  cancelAnimation,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,6 +27,7 @@ import { colors, fonts, radii, shadows, spacing, type as typeScale } from '@/the
 
 import { saveDebugScan } from './debugScans';
 import { EMBEDDING_MODEL, embedImage, getEmbeddingModel, type ImageSource } from './embedder';
+import { FRAME, Guides } from './Guides';
 import { frameCrop, smallestPictureSize, type CropRect } from './preprocess';
 import { updateReferences } from './references';
 import { decide, MATCH_MIN_GAP, MATCH_THRESHOLD, rankItems } from './similarity';
@@ -51,7 +51,6 @@ type ScanState =
   | { kind: 'nomatch'; code?: string; suggestions: ItemMatch[]; note?: string };
 
 const BARCODE_TYPES: BarcodeType[] = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'itf14', 'qr', 'datamatrix'];
-const FRAME = 272;
 // Android captures the full sensor by default (3060 × 4080 on the S24+, 0.6 to 0.8 s a check). A 1080 px short side
 // still crops to over twice the model's input. Chosen once per app run: '' means no size fit, so keep the default.
 const PHOTO_MIN_SIDE = 1080;
@@ -324,29 +323,6 @@ export function ScannerScreen() {
   );
 }
 
-/** Four white rounded corner guides, with a teal line sweeping while matching. */
-function Guides({ sweeping }: { sweeping: boolean }) {
-  const t = useSharedValue(0);
-  useEffect(() => {
-    if (sweeping) {
-      t.value = 0;
-      t.value = withRepeat(withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }), -1, true);
-    } else {
-      cancelAnimation(t);
-    }
-  }, [sweeping, t]);
-  const line = useAnimatedStyle(() => ({ top: FRAME * (0.08 + 0.8 * t.value) }));
-  return (
-    <View style={styles.frame} pointerEvents="none" accessible={false}>
-      <View style={[styles.corner, { left: 0, top: 0, borderLeftWidth: 4, borderTopWidth: 4, borderTopLeftRadius: 22 }]} />
-      <View style={[styles.corner, { right: 0, top: 0, borderRightWidth: 4, borderTopWidth: 4, borderTopRightRadius: 22 }]} />
-      <View style={[styles.corner, { left: 0, bottom: 0, borderLeftWidth: 4, borderBottomWidth: 4, borderBottomLeftRadius: 22 }]} />
-      <View style={[styles.corner, { right: 0, bottom: 0, borderRightWidth: 4, borderBottomWidth: 4, borderBottomRightRadius: 22 }]} />
-      {sweeping && <Animated.View style={[styles.scanLine, line]} />}
-    </View>
-  );
-}
-
 function MatchingBanner({ items, collections, still }: { items?: number; collections?: number; still: boolean }) {
   const t = useSharedValue(0);
   useEffect(() => {
@@ -578,25 +554,6 @@ function PermissionCard({ canAsk, onAsk, onSearch }: { canAsk: boolean; onAsk: (
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cameraGround },
   cameraPlaceholder: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
-  frame: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    width: FRAME,
-    height: FRAME,
-    marginLeft: -FRAME / 2,
-    marginTop: -FRAME / 2,
-  },
-  corner: { position: 'absolute', width: 40, height: 40, borderColor: colors.white },
-  scanLine: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    height: 2,
-    borderRadius: radii.full,
-    backgroundColor: '#5EEAD4',
-    boxShadow: '0px 0px 14px 2px rgba(94, 234, 212, 0.55)',
-  },
   top: { position: 'absolute', left: 0, right: 0, top: 0, gap: 12, paddingHorizontal: 16 },
   topButtons: { flexDirection: 'row', justifyContent: 'space-between' },
   banner: { gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderRadius: radii.cardSmall, boxShadow: shadows.floating },

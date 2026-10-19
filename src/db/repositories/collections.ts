@@ -1,9 +1,9 @@
-import { asc, count, desc, eq, max, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, max, sql } from 'drizzle-orm';
 
 import { newId, nowIso } from '@/lib/id';
 
 import { getDb, notifyChange } from '../database';
-import { collections, items, journalEntries, type CollectionRow } from '../schema';
+import { collections, itemEmbeddings, items, journalEntries, type CollectionRow } from '../schema';
 import type { Collection, CollectionSummary, StatusCounts } from '../types';
 
 function toCollection(r: CollectionRow): Collection {
@@ -135,16 +135,21 @@ export async function reorderCollections(orderedIds: string[]) {
   notifyChange();
 }
 
-/** Deletes a collection with its items and journal entries. Returns the photo paths to remove. */
+/** Deletes a collection with its items and journal entries. Returns the photo and scan angle frame paths to remove. */
 export async function deleteCollection(id: string): Promise<string[]> {
   const db = getDb();
-  const [itemPhotos, entryPhotos] = await Promise.all([
+  const [itemPhotos, entryPhotos, frames] = await Promise.all([
     db.select({ photos: items.photos }).from(items).where(eq(items.collection_id, id)),
     db.select({ photos: journalEntries.photos }).from(journalEntries).where(eq(journalEntries.collection_id, id)),
+    db
+      .select({ photo_uri: itemEmbeddings.photo_uri })
+      .from(itemEmbeddings)
+      .innerJoin(items, eq(items.id, itemEmbeddings.item_id))
+      .where(and(eq(items.collection_id, id), eq(itemEmbeddings.source, 'video'))),
   ]);
   await db.delete(collections).where(eq(collections.id, id));
   notifyChange();
-  return [...itemPhotos, ...entryPhotos].flatMap((r) => r.photos ?? []);
+  return [...[...itemPhotos, ...entryPhotos].flatMap((r) => r.photos ?? []), ...frames.map((f) => f.photo_uri)];
 }
 
 function cleanCategories(list: string[]): string[] {
