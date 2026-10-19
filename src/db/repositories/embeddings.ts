@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, max, ne, or } from 'drizzle-orm';
 
 import { newId, nowIso } from '@/lib/id';
 
@@ -105,7 +105,12 @@ export async function setReferenceFrames(
   }
   const have = new Set(before);
   const added = frames.filter((f) => !have.has(f.photo_uri));
-  const now = Date.now();
+  // Times after the item's latest frame keep the picking order, even for two calls in the same millisecond.
+  const [latest] = await db
+    .select({ at: max(itemEmbeddings.created_at) })
+    .from(itemEmbeddings)
+    .where(and(eq(itemEmbeddings.item_id, itemId), eq(itemEmbeddings.source, 'video')));
+  const now = Math.max(Date.now(), latest?.at ? Date.parse(latest.at) + 1 : 0);
   for (const [i, f] of added.entries()) {
     await db.insert(itemEmbeddings).values({
       id: newId(),
@@ -114,7 +119,6 @@ export async function setReferenceFrames(
       source: 'video',
       vector: f.vector ? toBytes(f.vector) : null,
       model: f.vector ? model : null,
-      // Distinct times keep the picking order.
       created_at: new Date(now + i).toISOString(),
     });
   }
