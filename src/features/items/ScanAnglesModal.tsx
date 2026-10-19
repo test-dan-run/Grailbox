@@ -39,7 +39,7 @@ export interface FormFrame {
   vector?: Float32Array;
 }
 
-const MAX_SECONDS = 15;
+const MAX_SECONDS = 10;
 const MIN_SECONDS = 2;
 const RECORD_SIZE = 76;
 const RING = 3;

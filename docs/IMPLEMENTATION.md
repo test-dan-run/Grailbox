@@ -164,7 +164,7 @@ Scan angles give the scanner views of an item from the sides and the back. Most 
 The user adds scan angles in the item form in four steps:
 
 1. First, the user adds a cover photo. The photo source sheet has a "Record scan angles" action, which stays disabled until the item has a cover photo, because the app checks the video frames against the cover photo. Right after the user adds the first photo of an item that isn't on the wishlist, the form also asks whether they want to record now.
-2. Second, the user records the item on the capture screen in `src/features/items/ScanAnglesModal.tsx`, which shows the scanner's corner guides. Recording stops by itself after 15 seconds, and the app asks for a longer video when a recording is shorter than 2 seconds. The user can also choose a video from the photo library.
+2. Second, the user records the item on the capture screen in `src/features/items/ScanAnglesModal.tsx`, which shows the scanner's corner guides. Recording stops by itself after 10 seconds, and the app asks for a longer video when a recording is shorter than 2 seconds. The user can also choose a video from the photo library.
 3. Third, the capture screen shows progress while the app picks frames, and it then shows the chosen frames in a grid, where the user can remove any frame.
 4. Fourth, the form shows a chip with the number of frames, e.g., "5 scan angles", and the chip opens the grid again. The app saves the frames when the user saves the item.
 
