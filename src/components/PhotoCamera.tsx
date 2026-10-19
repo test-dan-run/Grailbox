@@ -65,7 +65,7 @@ export function PhotoCamera({ onCapture, onClose }: { onCapture: (path: string) 
     if (!cam || !ready || busy) return;
     setBusy(true);
     try {
-      const picture = await cam.takePictureAsync({ quality: 1 });
+      const picture = await cam.takePictureAsync({ quality: 1, shutterSound: false });
       const path = await importPhoto(picture);
       if (picture.uri.startsWith(Paths.cache.uri)) {
         try {
