@@ -48,7 +48,7 @@ async function runEmbeddingCheck(): Promise<string> {
   const vb = await embedImage(uriB);
 
   t = performance.now();
-  const input = await prepareImage(uriA);
+  const { input } = await prepareImage(uriA);
   const prepMs = ms(t);
   const runs = async (m: typeof model) => {
     const out: number[] = [];

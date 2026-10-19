@@ -26,6 +26,7 @@
     "expo-sqlite": "~58.0.13",
     "expo-status-bar": "~58.0.3",
     "expo-system-ui": "~58.0.6",
+    "expo-video": "~58.0.11",
     "fflate": "^0.8.3",
     "jpeg-js": "^0.4.4",
     "react": "19.3.0",

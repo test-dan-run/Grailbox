@@ -73,6 +73,13 @@ export function getEmbeddingModel(): Promise<TfliteModel> {
   return loading;
 }
 
+export interface PreparedImage {
+  /** The model's input tensor. */
+  input: Float32Array;
+  /** The same image as INPUT_SIZE × INPUT_SIZE RGB bytes, for quality checks. */
+  pixels: Uint8Array;
+}
+
 /**
  * Crops (by default the largest centered square) and resizes a photo, then
  * decodes it into the model's input tensor.
@@ -80,7 +87,7 @@ export function getEmbeddingModel(): Promise<TfliteModel> {
 export async function prepareImage(
   source: ImageSource,
   crop: (width: number, height: number) => CropRect = centerSquare,
-): Promise<Float32Array> {
+): Promise<PreparedImage> {
   const full = await ImageManipulator.manipulate(source).renderAsync();
   const image = await ImageManipulator.manipulate(full)
     .crop(crop(full.width, full.height))
@@ -95,7 +102,7 @@ export async function prepareImage(
       useTArray: true,
       formatAsRGBA: false,
     });
-    return toInputTensor(data, width, height, 3);
+    return { input: toInputTensor(data, width, height, 3), pixels: data };
   } finally {
     file.delete();
   }
@@ -110,12 +117,18 @@ function serially<T>(task: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/** A unit-length 384-value embedding of a tensor from prepareImage. */
+export async function embedTensor(input: Float32Array): Promise<Float32Array> {
+  const model = await getEmbeddingModel();
+  const [output] = await serially(() => model.run([input.buffer as ArrayBuffer]));
+  return l2Normalize(new Float32Array(output));
+}
+
 /** A unit-length 384-value embedding of a photo. */
 export async function embedImage(
   source: ImageSource,
   crop?: (width: number, height: number) => CropRect,
 ): Promise<Float32Array> {
-  const [model, input] = await Promise.all([getEmbeddingModel(), prepareImage(source, crop)]);
-  const [output] = await serially(() => model.run([input.buffer as ArrayBuffer]));
-  return l2Normalize(new Float32Array(output));
+  const [, prepared] = await Promise.all([getEmbeddingModel(), prepareImage(source, crop)]);
+  return embedTensor(prepared.input);
 }

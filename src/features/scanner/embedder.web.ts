@@ -21,7 +21,16 @@ export function getEmbeddingModel(): Promise<TfliteModel> {
   return unavailable();
 }
 
-export function prepareImage(_source: ImageSource, _crop?: (width: number, height: number) => CropRect): Promise<Float32Array> {
+export interface PreparedImage {
+  input: Float32Array;
+  pixels: Uint8Array;
+}
+
+export function prepareImage(_source: ImageSource, _crop?: (width: number, height: number) => CropRect): Promise<PreparedImage> {
+  return unavailable();
+}
+
+export function embedTensor(_input: Float32Array): Promise<Float32Array> {
   return unavailable();
 }
 

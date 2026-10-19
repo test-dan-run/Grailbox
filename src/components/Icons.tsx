@@ -107,6 +107,13 @@ export const CameraIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const VideoIcon = (p: IconProps) => (
+  <Icon strokeWidth={1.7} {...p}>
+    <Rect x={3} y={6.5} width={12.5} height={11} rx={2.5} />
+    <Path d="M15.5 10.5l5-3v9l-5-3z" />
+  </Icon>
+);
+
 export const ChevronLeftIcon = (p: IconProps) => (
   <Icon strokeWidth={1.9} {...p}>
     <Path d="M15 5l-7 7 7 7" />

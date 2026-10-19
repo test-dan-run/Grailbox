@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -16,19 +16,24 @@ import {
   TagsField,
   TextField,
 } from '@/components/form';
-import { TrashIcon } from '@/components/Icons';
-import { CONDITION_META, SecondaryButton, SegmentedControl, STATUS_META } from '@/components/ui';
+import { ChevronRightIcon, TrashIcon, VideoIcon } from '@/components/Icons';
+import { AppText, CONDITION_META, SecondaryButton, SegmentedControl, STATUS_META } from '@/components/ui';
 import { listCollections } from '@/db/repositories/collections';
+import { listReferenceFrames, setEmbedding, setReferenceFrames, syncReferencePhotos } from '@/db/repositories/embeddings';
 import { createItem, deleteItem, getItem, updateItem } from '@/db/repositories/items';
 import { CONDITIONS, ITEM_STATUSES, type Condition, type ItemInput, type ItemStatus, type Origin, type Priority } from '@/db/types';
 import { useQuery } from '@/db/useQuery';
+import { EMBEDDING_MODEL } from '@/features/scanner/embedder';
+import type { PickedFrame } from '@/features/scanner/videoFrames';
 import { ORIGIN_OPTIONS, PRIORITY_OPTIONS } from '@/features/wishlist/WishlistSheet';
 import { todayIso } from '@/lib/dates';
 import { deviceCurrency, minorToInput, parsePriceInput } from '@/lib/money';
 import { goBack } from '@/lib/nav';
 import { deletePhotoFiles } from '@/lib/photos';
 import { useUnsavedPhotos } from '@/lib/useUnsavedPhotos';
-import { colors, spacing } from '@/theme';
+import { colors, radii, spacing } from '@/theme';
+
+import { ScanAnglesModal, type FormFrame } from './ScanAnglesModal';
 
 interface FormState {
   title: string;
@@ -90,17 +95,23 @@ export function ItemFormScreen() {
   }));
   const [loaded, setLoaded] = useState(!editing);
   const [saving, setSaving] = useState(false);
+  // Scan angles: hidden reference frames from a video, and the cover photo's vector when the app just computed it.
+  const [frames, setFrames] = useState<FormFrame[]>([]);
+  const [coverVector, setCoverVector] = useState<PickedFrame>();
+  const [angles, setAngles] = useState<'record' | 'review'>();
 
-  // Photos imported in this session but not saved are cleaned up on close.
-  const unsaved = useUnsavedPhotos(f.photos);
+  // Photos and frames imported in this session but not saved are cleaned up on close.
+  const files = useMemo(() => [...f.photos, ...frames.map((x) => x.path)], [f.photos, frames]);
+  const unsaved = useUnsavedPhotos(files);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((s) => ({ ...s, [k]: v }));
 
   useEffect(() => {
     if (!params.id) return;
-    getItem(params.id).then((it) => {
+    Promise.all([getItem(params.id), listReferenceFrames(params.id)]).then(([it, framePaths]) => {
       if (!it) return;
-      unsaved.setInitial(it.photos);
+      unsaved.setInitial([...it.photos, ...framePaths]);
+      setFrames(framePaths.map((path) => ({ path })));
       const price = it.status === 'WISHLIST' ? it.estimated_price : it.purchase_price;
       setF({
         title: it.title,
@@ -166,16 +177,18 @@ export function ItemFormScreen() {
       photos: f.photos,
     };
     try {
-      if (params.id) {
-        await updateItem(params.id, input);
-        deletePhotoFiles(unsaved.initial().filter((p) => !f.photos.includes(p)));
-        unsaved.markSaved();
-        goBack(router);
-      } else {
-        await createItem(input);
-        unsaved.markSaved();
-        goBack(router);
+      let id = params.id;
+      if (id) await updateItem(id, input);
+      else id = await createItem(input);
+      await setReferenceFrames(id, frames.map((x) => ({ photo_uri: x.path, vector: x.vector })), EMBEDDING_MODEL);
+      if (coverVector && f.photos.includes(coverVector.path)) {
+        // The app already embedded the cover photo to check the frames, so store that vector instead of computing it again.
+        await syncReferencePhotos();
+        await setEmbedding(id, coverVector.path, coverVector.vector, EMBEDDING_MODEL);
       }
+      if (params.id) deletePhotoFiles(unsaved.initial().filter((p) => !files.includes(p)));
+      unsaved.markSaved();
+      goBack(router);
     } catch (e) {
       Alert.alert('Could not save', String((e as Error).message ?? e));
     } finally {
@@ -192,7 +205,7 @@ export function ItemFormScreen() {
         style: 'destructive',
         onPress: async () => {
           const photos = await deleteItem(params.id!);
-          deletePhotoFiles([...photos, ...f.photos]);
+          deletePhotoFiles([...photos, ...files]);
           unsaved.markSaved();
           // Edit opens over Item Details: leave both the form and the deleted item.
           if (router.canDismiss()) router.dismiss(2);
@@ -215,7 +228,44 @@ export function ItemFormScreen() {
           tintKey={params.id ?? 'new-item'}
           title="Add or snap photos"
           subtitle="The first photo is the cover"
+          extraActions={[
+            {
+              label: frames.length ? 'Record scan angles again' : 'Record scan angles',
+              icon: <VideoIcon size={20} />,
+              onPress: () => setAngles('record'),
+              disabled: f.photos.length === 0,
+              hint:
+                f.photos.length === 0
+                  ? 'Take a cover photo first'
+                  : frames.length
+                    ? `Replaces the ${frames.length} current ${frames.length === 1 ? 'angle' : 'angles'}`
+                    : 'A short video helps the scanner recognize the item from any side',
+            },
+          ]}
+          onAdded={() => {
+            // Offer scan angles right after the cover photo, for items the user has in hand.
+            if (f.photos.length > 0 || frames.length > 0 || f.status === 'WISHLIST') return;
+            Alert.alert('Record scan angles?', 'Record a short video while you turn the item, so the scanner recognizes it from any side.', [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Record', onPress: () => setAngles('record') },
+            ]);
+          }}
         />
+        {frames.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityHint="Shows the hidden frames the scanner compares scans with"
+            onPress={() => setAngles('review')}
+            style={({ pressed }) => [styles.anglesChip, pressed && { opacity: 0.7 }]}
+            testID="item-scan-angles"
+          >
+            <VideoIcon size={16} color={colors.brandPrimary} />
+            <AppText variant="label" color={colors.brandPrimary}>
+              {frames.length} scan {frames.length === 1 ? 'angle' : 'angles'}
+            </AppText>
+            <ChevronRightIcon size={14} color={colors.brandPrimary} />
+          </Pressable>
+        )}
         <TextField label="Item name" value={f.title} onChangeText={(t) => set('title', t)} placeholder="e.g. Rowlet Jumbo Plush" testID="item-title" />
         <SelectField
           label="Collection"
@@ -340,6 +390,19 @@ export function ItemFormScreen() {
           />
         )}
       </ScrollView>
+      {angles && (
+        <ScanAnglesModal
+          start={angles}
+          cover={f.photos[0]}
+          frames={frames}
+          onDone={(next, cover) => {
+            setFrames(next);
+            if (cover) setCoverVector(cover);
+            setAngles(undefined);
+          }}
+          onClose={() => setAngles(undefined)}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -348,4 +411,15 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceCard },
   body: { gap: 20, paddingHorizontal: spacing.gutter, paddingTop: 8 },
   twoUp: { flexDirection: 'row', gap: 12 },
+  anglesChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 44,
+    marginTop: -8,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+    backgroundColor: colors.brandMint,
+  },
 });

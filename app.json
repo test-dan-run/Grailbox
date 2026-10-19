@@ -78,7 +78,8 @@
           "enableCoreMLDelegate": true
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-video"
     ],
     "scheme": "grailbox",
     "experiments": {

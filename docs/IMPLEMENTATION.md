@@ -63,15 +63,19 @@ Duplicate copies of an item are stored as the `quantity` of one item, instead of
 
 An item's status decides which of its fields apply. When you change an item to Wishlist, the app clears its condition, because you don't own it yet. When you change an item from Wishlist to another status, the app clears its priority.
 
-The `item_embeddings` table holds one row for every item photo, for the photo matcher. An embedding is a list of numbers that describes what a photo looks like, so two photos of the same item get similar lists. The `vector` column holds the embedding, and the `model` column names the model that made it. Vectors from two different models can't be compared, so when the model changes, the app computes the old vectors again.
+The `item_embeddings` table holds one row for every reference photo, for the photo matcher. An embedding is a list of numbers that describes what a photo looks like, so two photos of the same item get similar lists. The `vector` column holds the embedding, and the `model` column names the model that made it. Vectors from two different models can't be compared, so when the model changes, the app computes the old vectors again.
+
+A reference photo is either an item photo or a frame from the item's scan angles video, and the `source` column says which, with `photo` or `video`. Every item photo is a reference photo. Video frames are hidden, so they never show in the gallery, and they live only in `item_embeddings`, not in the item's `photos` list. For how the app picks the frames, see [Scan angles](#scan-angles).
 
 ### Photos
 
+"Take photo" opens the app's own camera screen in `src/components/PhotoCamera.tsx`, instead of the system camera app, so photos always start on the back camera. The image picker asks the system camera for the back lens, but Samsung Camera ignores the request and opens the lens you used last, which is the front lens after a selfie. The app's camera has a flash toggle and pinch zoom. "Choose from library" still uses the system photo picker.
+
 Photo paths are stored relative to the app's document directory, e.g., `photos/<uuid>.jpg`, instead of as absolute `file://` URIs. iOS changes the app's container path between app updates, so an absolute path could stop working after an update.
 
-The app saves every photo at two sizes. The main copy is 1080 px, and a 256 px thumbnail sits next to it with a name ending in `_256.jpg`, so lists and grids don't decode full size photos.
+The app saves every photo at two sizes. The main copy is 1080 px, and a 256 px thumbnail sits next to it with a name ending in `_256.jpg`, so lists and grids don't decode full size photos. Scan angle frames are square 448 px JPEGs in the same folder, with no thumbnail, because no list shows them.
 
-If you import photos in a form and then cancel the form, the app deletes those photos. If you remove a photo from a record, the app deletes the photo file when you save the record. Both rules keep photo files from piling up without a record that uses them.
+If you import photos in a form and then cancel the form, the app deletes those photos. If you remove a photo from a record, the app deletes the photo file when you save the record. The app also deletes photos that you import and then remove again before you save, e.g., the frames of a scan angles video that you record again. The rules keep photo files from piling up without a record that uses them. When you delete an item or a collection, the app deletes the files of its photos and of its scan angle frames.
 
 ### Search
 
@@ -89,7 +93,7 @@ The list of ISO 4217 currencies is bundled with the app, because the Hermes Java
 
 ### Export
 
-Export creates one zip file, which holds `grailbox.json` and a `photos/` folder, and the paths in the JSON match the paths in the zip. One file is easier to save and move than the data and the photos as two separate files. Thumbnails are left out, because the app can make them again from the photos.
+Export creates one zip file, which holds `grailbox.json` and a `photos/` folder, and the paths in the JSON match the paths in the zip. One file is easier to save and move than the data and the photos as two separate files. Thumbnails are left out, because the app can make them again from the photos. Each item in the JSON lists its scan angle frames in `reference_frames`, and the frame files are in the same `photos/` folder.
 
 The app writes the zip one photo at a time with `fflate`, so a large collection doesn't have to fit in memory.
 
@@ -153,7 +157,32 @@ The app runs one model call at a time from a queue, so the scanner and the backg
 
 #### Reference photos
 
-`src/features/scanner/references.ts` keeps a vector for every item photo. It runs at launch and shortly after any data change, and it embeds one photo at a time in the background. It loads the model only when a photo needs a vector, so the app doesn't spend time loading the model when no photo needs a vector.
+`src/features/scanner/references.ts` keeps a vector for every reference photo, which means every item photo and every scan angle frame. It runs at launch and shortly after any data change, and it embeds one photo at a time in the background. It loads the model only when a photo needs a vector, so the app doesn't spend time loading the model when no photo needs a vector.
+
+#### Scan angles
+
+Scan angles give the scanner views of an item from the sides and the back. Most items have one or two photos, usually from the front, and the scanner scores an item by its best matching reference photo, so a scan from the side scores lower than a scan from the front. With scan angles, the user records a short video while they turn the item, and the app keeps a few frames from different angles as hidden reference photos.
+
+The user adds scan angles in the item form in four steps:
+
+1. First, the user adds a cover photo. The photo source sheet has a "Record scan angles" action, which stays disabled until the item has a cover photo, because the app checks the video frames against the cover photo. Right after the user adds the first photo of an item that isn't on the wishlist, the form also asks whether they want to record now.
+2. Second, the user records the item on the capture screen in `src/features/items/ScanAnglesModal.tsx`, which shows the scanner's corner guides. Recording stops by itself after 10 seconds, and the app asks for a longer video when a recording is shorter than 2 seconds. The user can also choose a video from the photo library.
+3. Third, the capture screen shows progress while the app picks frames, and it then shows the chosen frames in a grid, where the user can remove any frame.
+4. Fourth, the form shows a chip with the number of frames, e.g., "5 scan angles", and the chip opens the grid again. The app saves the frames when the user saves the item.
+
+A new recording replaces the item's frames, and the app deletes the video after it picks the frames. The wishlist sheet has no scan angles, because its photo is often a shelf tag or a listing screenshot, which doesn't show the item well enough to check the frames against.
+
+The capture screen records with `CameraView` in video mode, with the `mute` prop set. On Android, a muted recording doesn't need the microphone permission, which the app's manifest leaves out. The capture screen is a React Native `Modal` that the item form opens, instead of a route, so the frames stay in the form's state.
+
+The app picks the frames in five steps. The math is in `src/features/scanner/frames.ts` as pure functions with Jest tests, and `videoFrames.ts` does the native parts.
+
+1. First, the app samples up to 16 frames, spread evenly over the video and at least 0.33 s apart, with expo-video's `generateThumbnailsAsync`, at 720 px wide. It crops each frame to the area inside the guides with `frameCrop`, the same crop the scanner uses, and it saves the crop as a 448 px JPEG. Frames from a library video get the centered square crop, because nobody framed them with the guides.
+2. Second, the app scores the sharpness and the exposure of each frame from its 224 px pixels. The sharpness is the variance of the Laplacian of the brightness, where the Laplacian is a 3 × 3 filter that responds to edges, so a blurry frame gets a low score. The app drops frames that are too dark or too bright, keeps the sharper frame of each pair of neighboring frames, and drops frames with less than 35% of the median sharpness.
+3. Third, the app embeds the remaining frames, which are at most 8. It embeds the cover photo while it reads the video, because reading doesn't use the model.
+4. Fourth, the app drops a frame when its cosine similarity to the cover photo and its similarity to the medoid are both below 0.5. The medoid is the frame with the highest mean similarity to the other frames, and the medoid check keeps views of the back, which can look different from a cover photo of the front.
+5. Fifth, the app picks up to 5 frames with greedy farthest point sampling. It treats the cover photo as already chosen, and in each round it adds the frame that is least similar to its most similar chosen photo, with a small bonus for sharpness. It skips frames with a similarity of 0.95 or more to a chosen photo, so a video of an item that barely turned gives fewer frames.
+
+The limits in `frames.ts` are first guesses, and the debug files from real videos will set them. The app stores each chosen frame with its vector, so `references.ts` doesn't embed the frame again. The app also stores the vector it computed for the cover photo. When `EMBEDDING_MODEL` changes, `references.ts` embeds the frames again from their JPEG files, the same way as item photos.
 
 #### A check, step by step
 
@@ -194,9 +223,13 @@ The rule prefers No match over a wrong match, because a wrong Already owned coul
 
 The saved photos aren't scanner photos, because the scanner crops to the guides, and photos taken in one session can look more alike than a scan does. A scanner test of all 30 items wasn't run.
 
+The tests above ran before scan angles existed, when items had 1 to 3 reference photos. An item with scan angles has up to 6 reference photos, so it has more chances to score high against a scan, both for a real match and for an item that looks like it. The thresholds need a new test with scan angles, which [VIDEO_REFERENCES_PLAN.md](VIDEO_REFERENCES_PLAN.md) describes.
+
 #### Tools for tuning in development builds
 
 In development builds, the match pill shows the raw score, and Metro logs the timing and the top scores of every check with the `[Scanner]` prefix. The app also saves each check's photo, crop, and scores to `files/scan-debug` on the phone, so you can tune the matching on a computer. To copy the files, run `adb exec-out run-as app.grailbox tar c files/scan-debug | tar x`.
+
+For scan angles, development builds save every sampled frame of each video to a folder in `files/frame-debug`, with a `frames.json` file. The file lists each frame's time, sharpness, brightness, and similarities to the cover photo and the medoid, and the reason the app kept or dropped the frame. The folder also holds `full.jpg`, the first frame before cropping, and `frames.json` gives its size and the crop it got, so you can check that the crop matches the guides. Metro logs the time for each video with the `[Frames]` prefix. To copy the files, run `adb exec-out run-as app.grailbox tar c files/frame-debug | tar x`.
 
 ### Platform problems the scanner code works around
 
@@ -204,7 +237,11 @@ In development builds, the match pill shows the raw score, and Metro logs the ti
   - `ai-edge-quantizer` writes the weights after the flatbuffer, in a format meant for models over 2 GB, which the runtime inside fast-tflite can't read. The export script writes the weights back inline.
 - Bundled files in Android release builds
   - Android release builds keep bundled files as app resources, which have no file path. `embedder.ts` copies the model to the cache with expo-asset before it loads the model.
+- expo-video on Android
+  - `generateThumbnailsAsync` decodes every frame it's asked for at the same time, and a 720 × 1280 frame takes 3.7 MB, so `videoFrames.ts` asks for 6 frames at a time.
+  - One frame that fails to decode fails the whole call, so the app then asks for the frames one at a time and skips the frame that fails.
 - expo-camera on Android
+  - `mute` is a `CameraView` prop, not a `recordAsync` option. In video mode, `CameraView` doesn't read barcodes.
   - Changing `onBarcodeScanned` on `CameraView` rebuilds the camera session, which cancels a photo in progress, so the scanner keeps the barcode handler bound during a photo check.
   - `PictureRef.savePictureAsync` computes the JPEG quality as `quality.toInt() * 100`, so any quality below 1 saves at quality 0. The scanner embeds the photo from memory, and only the debug copies use `savePictureAsync`, with `quality: 1`.
 

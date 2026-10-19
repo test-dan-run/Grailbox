@@ -1,15 +1,16 @@
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View, type TextInputProps } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View, type TextInputProps } from 'react-native';
 
 import { CURRENCIES } from '@/lib/currencies';
 import { formatMonthYear, fromIsoDate, toIsoDate } from '@/lib/dates';
 import { currencySymbol, formatPriceInput } from '@/lib/money';
-import { PhotoPermissionError, pickPhotos, type PhotoSource } from '@/lib/photos';
+import { pickLibraryPhotos, type PhotoSource } from '@/lib/photos';
 import { colors, radii, spacing, type as typeScale } from '@/theme';
 
 import { CameraIcon, ChevronDownIcon, CloseIcon, ImageIcon, MinusIcon, PlusIcon, StarFilledIcon } from './Icons';
-import { ActionSheet, PickerSheet, type PickerOption } from './Sheet';
+import { PhotoCamera } from './PhotoCamera';
+import { ActionSheet, PickerSheet, type PickerOption, type SheetAction } from './Sheet';
 import { AppText, Grabber, IconButton, Photo, TextButton } from './ui';
 
 /* ------------------------------------------------------------ Structure */
@@ -432,42 +433,56 @@ export function ChoicePills({
 
 /* --------------------------------------------------------------- Photos */
 
-function usePhotoSource(onAdd: (paths: string[]) => void, multiple: boolean) {
+function usePhotoSource(onAdd: (paths: string[], source: PhotoSource) => void, multiple: boolean, extraActions: SheetAction[] = []) {
   const [choosing, setChoosing] = useState(false);
+  const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = async (source: PhotoSource) => {
+    if (source === 'camera') {
+      setCamera(true);
+      return;
+    }
     try {
       setBusy(true);
-      const paths = await pickPhotos(source, { multiple });
-      if (paths.length) onAdd(paths);
+      const paths = await pickLibraryPhotos({ multiple });
+      if (paths.length) onAdd(paths, source);
     } catch (e) {
-      if (e instanceof PhotoPermissionError) {
-        Alert.alert('Camera access is off', 'Allow camera access in Settings to snap photos.', [
-          { text: 'Not now', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ]);
-      } else {
-        Alert.alert('Could not add the photo', String((e as Error).message ?? e));
-      }
+      Alert.alert('Could not add the photo', String((e as Error).message ?? e));
     } finally {
       setBusy(false);
     }
   };
   const sheet = (
-    <ActionSheet
+    <>
+      {camera && (
+        <PhotoCamera
+          onCapture={(path) => {
+            setCamera(false);
+            onAdd([path], 'camera');
+          }}
+          onClose={() => setCamera(false)}
+        />
+      )}
+      <ActionSheet
       visible={choosing}
       onClose={() => setChoosing(false)}
       title="Add a photo"
       actions={[
         { label: 'Take photo', icon: <CameraIcon size={20} />, onPress: () => run('camera') },
         { label: multiple ? 'Choose from library' : 'Choose from library', icon: <ImageIcon size={20} />, onPress: () => run('library') },
+        ...extraActions,
       ]}
     />
+    </>
   );
   return { open: () => setChoosing(true), sheet, busy };
 }
 
-/** The dashed drop zone from the wishlist sheet, then a row of thumbnails once photos exist. */
+/**
+ * The dashed drop zone from the wishlist sheet, then a row of thumbnails once
+ * photos exist. `extraActions` join Take photo and Choose from library in the
+ * photo source sheet, and `onAdded` hears about each batch of new photos.
+ */
 export function PhotoField({
   photos,
   onChange,
@@ -475,6 +490,8 @@ export function PhotoField({
   subtitle = 'Shelf tag, listing screenshot or the item itself',
   multiple = true,
   tintKey,
+  extraActions,
+  onAdded,
 }: {
   photos: string[];
   onChange: (paths: string[]) => void;
@@ -482,8 +499,17 @@ export function PhotoField({
   subtitle?: string;
   multiple?: boolean;
   tintKey: string;
+  extraActions?: SheetAction[];
+  onAdded?: (paths: string[], source: PhotoSource) => void;
 }) {
-  const src = usePhotoSource((paths) => onChange(multiple ? [...photos, ...paths] : paths.slice(0, 1)), multiple);
+  const src = usePhotoSource(
+    (paths, source) => {
+      onChange(multiple ? [...photos, ...paths] : paths.slice(0, 1));
+      onAdded?.(paths, source);
+    },
+    multiple,
+    extraActions,
+  );
 
   if (photos.length === 0) {
     return (

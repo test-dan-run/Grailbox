@@ -2,6 +2,7 @@ import { File, FileMode, Paths } from 'expo-file-system';
 import { strToU8, Zip, ZipPassThrough } from 'fflate';
 
 import { listCollections } from '@/db/repositories/collections';
+import { referenceFramesByItem } from '@/db/repositories/embeddings';
 import { listItems } from '@/db/repositories/items';
 import { listEntries } from '@/db/repositories/journal';
 import type { Collection, CollectibleItem, JournalEntry } from '@/db/types';
@@ -18,17 +19,19 @@ export interface GrailboxExport {
   exported_at: string;
   /** Prices are integers in minor units of each item's own currency. */
   collections: Collection[];
-  items: CollectibleItem[];
+  /** `reference_frames` are the hidden scan angle frames the scanner matches against, besides the photos. */
+  items: (CollectibleItem & { reference_frames: string[] })[];
   journal_entries: JournalEntry[];
 }
 
 /** Everything in the database as one JSON-ready object. */
 export async function buildExport(): Promise<GrailboxExport> {
   const collections = await listCollections();
-  const items: CollectibleItem[] = [];
+  const frames = await referenceFramesByItem();
+  const items: GrailboxExport['items'] = [];
   const journal_entries: JournalEntry[] = [];
   for (const c of collections) {
-    items.push(...(await listItems(c.id)));
+    items.push(...(await listItems(c.id)).map((it) => ({ ...it, reference_frames: frames.get(it.id) ?? [] })));
     journal_entries.push(...(await listEntries(c.id)));
   }
   return { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), collections, items, journal_entries };
@@ -36,7 +39,7 @@ export async function buildExport(): Promise<GrailboxExport> {
 
 /**
  * Writes the backup: one zip holding grailbox.json and a photos/ folder.
- * Photo paths in the JSON (photos/<id>.jpg) match the paths inside the zip.
+ * Photo and frame paths in the JSON (photos/<id>.jpg) match the paths inside the zip.
  * Thumbnails are left out; they can be rebuilt from the photos. The zip is
  * streamed to disk one photo at a time, without recompressing JPEGs.
  */
